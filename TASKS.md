@@ -11,7 +11,7 @@ Agents: before starting any task, set its status to `in_progress` and add your a
 | ID | Task | Status | Agent |
 |---|---|---|---|
 | 1.1 | Repo & tooling setup (pyproject.toml, venv, pytest config, Vite+React scaffold, Tailwind, shadcn/ui, Impeccable, Recharts) | done | — |
-| 1.2 | Pydantic models — RowingMetrics, StrokeRecord, WorkoutRecord, WorkoutState enum, WSMessage envelope (`src/models.py`) | available | — |
+| 1.2 | Pydantic models — RowingMetrics, StrokeRecord, WorkoutRecord, WorkoutState enum, WSMessage envelope (`src/models.py`) | done | — |
 | 1.3 | Config — pydantic-settings Settings class + config.toml template (`src/config.py`) | available | — |
 | 1.4 | Event bus — EventType enum, Event model, EventBus with asyncio.Queue, multiple subscribers (`src/events.py`) | available | — |
 | 1.5 | Tests — models, config, events (`tests/unit/test_models.py`, `test_config.py`, `test_events.py`) | available | — |
