@@ -114,15 +114,15 @@ Before starting any task, set its status to `in_progress`. Mark `done` when comp
 
 | ID | Task | Status |
 |---|---|---|
-| 9.1 | Project setup — shadcn/ui init, Tailwind dark mode, PWA manifest + service worker, TypeScript types mirroring Pydantic models | available |
-| 9.2 | useWorkoutSocket hook — WebSocket lifecycle, typed state parsing, exponential backoff reconnect, visibilitychange reconnect | available |
-| 9.3 | useWakeLock hook — acquire on ACTIVE, release on PAUSED/IDLE/SUMMARY, Safari quirk handling | available |
-| 9.4 | StatusBar component — S4 status, TICKR status + HR preview, Strava auth status, responsive icon collapse | available |
-| 9.5 | LiveMetrics component — iPhone single-column, iPad two-column + sparkline, all metric tiles, IDLE/PAUSED states (run /polish /bolder) | available |
-| 9.6 | WorkoutControls component — 64px+ touch targets, per-state button sets, end confirmation Dialog, smart detection toasts | available |
-| 9.7 | CompletionScreen component — summary stats, HR chart, Upload to Strava button with loading state, Strava deep link | available |
-| 9.8 | WorkoutHistory component — paginated list, Strava status badges, upload/retry/link actions, expandable detail, Sheet for mobile (run /audit) | available |
-| 9.9 | Offline/error states — lost Pi connection banner, S4 disconnect indicator, TICKR HR tile "–" state | available |
+| 9.1 | Project setup — shadcn/ui init, Tailwind dark mode, PWA manifest + service worker, TypeScript types mirroring Pydantic models | done |
+| 9.2 | useWorkoutSocket hook — WebSocket lifecycle, typed state parsing, exponential backoff reconnect, visibilitychange reconnect | done |
+| 9.3 | useWakeLock hook — acquire on ACTIVE, release on PAUSED/IDLE/SUMMARY, Safari quirk handling | done |
+| 9.4 | StatusBar component — S4 status, TICKR status + HR preview, Strava auth status, responsive icon collapse | done |
+| 9.5 | LiveMetrics component — iPhone single-column, iPad two-column + sparkline, all metric tiles, IDLE/PAUSED states (run /polish /bolder) | done |
+| 9.6 | WorkoutControls component — 64px+ touch targets, per-state button sets, end confirmation Dialog, smart detection toasts | done |
+| 9.7 | CompletionScreen component — summary stats, HR chart, Upload to Strava button with loading state, Strava deep link | done |
+| 9.8 | WorkoutHistory component — paginated list, Strava status badges, upload/retry/link actions, expandable detail, Sheet for mobile (run /audit) | done |
+| 9.9 | Offline/error states — lost Pi connection banner, S4 disconnect indicator, TICKR HR tile "–" state | done |
 
 **Phase 9 exit criteria:** Works on iPhone Safari + iPad Safari. PWA installable to home screen. Wake lock prevents sleep during workout.
 
