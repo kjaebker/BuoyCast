@@ -66,7 +66,7 @@ Before starting any task, set its status to `in_progress`. Mark `done` when comp
 | 5.2 | Smart detection — idle detection (auto-pause after N seconds), rowing detection (auto-resume), idle warning event | done |
 | 5.3 | Stroke recorder — subscribes to MERGED_METRICS, ACTIVE-only recording, 10s flush to SQLite, final flush + summary stats on end (`src/workout/recorder.py`) | done |
 | 5.4 | FIT file generation — Sport.ROWING + SubSport.INDOOR_ROWING, session message, record messages per stroke, HR time series (`src/workout/fit.py`) | done |
-| 5.5 | Tests — state machine unit, recorder unit, FIT unit, full e2e workout flow (`tests/unit/test_workout_state.py`, `test_recorder.py`, `test_fit.py`, `tests/e2e/test_workout_flow.py`) | available |
+| 5.5 | Tests — state machine unit, recorder unit, FIT unit, full e2e workout flow (`tests/unit/test_workout_state.py`, `test_recorder.py`, `test_fit.py`, `tests/e2e/test_workout_flow.py`) | done |
 
 **Phase 5 exit criteria:** `pytest tests/unit/test_workout_state.py tests/unit/test_recorder.py tests/unit/test_fit.py tests/e2e/test_workout_flow.py` passes.
 
