@@ -170,6 +170,112 @@ class MockSerial:
         )
 
 
+class MockBLEClient:
+    """Mock BLE client that simulates TICKR HR notifications.
+
+    Supports:
+    - Simulated connection and HR notifications on a timer
+    - Configurable BPM and RR intervals
+    - Simulated disconnect mid-session
+    - Unavailable at startup
+    """
+
+    def __init__(self) -> None:
+        self._is_connected = False
+        self._notify_callback: Any = None
+        self._notify_task: asyncio.Task[None] | None = None
+        self._bpm: int = 140
+        self._rr_intervals: list[int] = [700]
+        self._notify_interval_s: float = 1.0
+        self._disconnect_after_notifications: int | None = None
+        self._notification_count = 0
+        self._should_fail_connect = False
+
+    @property
+    def is_connected(self) -> bool:
+        return self._is_connected
+
+    async def connect(self, address: str) -> None:
+        if self._should_fail_connect:
+            raise OSError("Simulated: TICKR unavailable")
+        self._is_connected = True
+
+    async def disconnect(self) -> None:
+        self._is_connected = False
+        if self._notify_task and not self._notify_task.done():
+            self._notify_task.cancel()
+            try:
+                await self._notify_task
+            except asyncio.CancelledError:
+                pass
+            self._notify_task = None
+
+    async def start_notify(self, char_uuid: str, callback: Any) -> None:
+        self._notify_callback = callback
+        self._notification_count = 0
+        self._notify_task = asyncio.create_task(self._notification_loop())
+
+    async def stop_notify(self, char_uuid: str) -> None:
+        if self._notify_task and not self._notify_task.done():
+            self._notify_task.cancel()
+            try:
+                await self._notify_task
+            except asyncio.CancelledError:
+                pass
+            self._notify_task = None
+        self._notify_callback = None
+
+    async def _notification_loop(self) -> None:
+        """Fire HR notifications at configured interval."""
+        while self._is_connected:
+            if self._disconnect_after_notifications is not None:
+                if self._notification_count >= self._disconnect_after_notifications:
+                    self._is_connected = False
+                    return
+
+            data = self._build_hr_data()
+            if self._notify_callback is not None:
+                await self._notify_callback(data)
+            self._notification_count += 1
+            await asyncio.sleep(self._notify_interval_s)
+
+    def _build_hr_data(self) -> bytearray:
+        """Build BLE HR Measurement characteristic value."""
+        flags = 0x00  # uint8 BPM format
+        if self._rr_intervals:
+            flags |= 0x10  # RR interval present
+        data = bytearray([flags, self._bpm])
+        for rr in self._rr_intervals:
+            # Convert ms to 1/1024 seconds
+            rr_raw = int(round(rr * 1024 / 1000))
+            data.extend(rr_raw.to_bytes(2, byteorder="little"))
+        return data
+
+    # --- Configuration helpers ---
+
+    def set_hr(self, bpm: int, rr_intervals: list[int] | None = None) -> None:
+        """Set the HR values that will be notified."""
+        self._bpm = bpm
+        self._rr_intervals = rr_intervals or []
+
+    def set_disconnect_after(self, n_notifications: int) -> None:
+        """Simulate disconnect after n notifications."""
+        self._disconnect_after_notifications = n_notifications
+        self._notification_count = 0
+
+    def set_unavailable(self) -> None:
+        """Simulate TICKR not found / unavailable."""
+        self._should_fail_connect = True
+
+    def set_available(self) -> None:
+        """Make TICKR available again after set_unavailable()."""
+        self._should_fail_connect = False
+
+    def set_notify_interval(self, seconds: float) -> None:
+        """Set interval between HR notifications."""
+        self._notify_interval_s = seconds
+
+
 @pytest.fixture
 def mock_serial() -> MockSerial:
     """Provide a MockSerial instance."""
@@ -190,3 +296,18 @@ def mock_serial_idle() -> MockSerial:
     ms = MockSerial()
     ms.set_idle()
     return ms
+
+
+@pytest.fixture
+def mock_ble() -> MockBLEClient:
+    """Provide a MockBLEClient instance."""
+    return MockBLEClient()
+
+
+@pytest.fixture
+def mock_ble_stable() -> MockBLEClient:
+    """Provide a MockBLEClient with stable HR data."""
+    ble = MockBLEClient()
+    ble.set_hr(140, [700])
+    ble.set_notify_interval(0.1)  # Fast for tests
+    return ble

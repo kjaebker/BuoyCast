@@ -78,7 +78,7 @@ class DataMerger:
                 # S4 source — merge and publish
                 self._latest_s4 = metrics
                 merged = self._merge()
-                await self._bus.emit(EventType.METRICS_UPDATE, data=merged)
+                await self._bus.emit(EventType.MERGED_METRICS, data=merged)
 
     def _is_hr_source(self, metrics: RowingMetrics) -> bool:
         """Determine if metrics came from TICKR (HR only) vs S4."""

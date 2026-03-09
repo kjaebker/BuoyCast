@@ -12,6 +12,7 @@ class TestEventType:
     def test_all_values_exist(self):
         expected = {
             "metrics_update",
+            "merged_metrics",
             "workout_started",
             "workout_paused",
             "workout_resumed",

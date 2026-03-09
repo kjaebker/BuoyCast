@@ -109,6 +109,10 @@ class TickrReader:
         ble_client: BLEClient,
         event_bus: EventBus,
         settings: HeartRateSettings | None = None,
+        *,
+        backoff_base_s: float = BACKOFF_BASE_S,
+        backoff_max_s: float = BACKOFF_MAX_S,
+        poll_interval_s: float = 0.5,
     ) -> None:
         self._ble = ble_client
         self._bus = event_bus
@@ -116,6 +120,9 @@ class TickrReader:
         self._running = False
         self._connected = False
         self._task: asyncio.Task[None] | None = None
+        self._backoff_base_s = backoff_base_s
+        self._backoff_max_s = backoff_max_s
+        self._poll_interval_s = poll_interval_s
 
     @property
     def connected(self) -> bool:
@@ -146,16 +153,16 @@ class TickrReader:
 
     async def _run_loop(self) -> None:
         """Main loop: connect → listen → reconnect with exponential backoff."""
-        backoff = BACKOFF_BASE_S
+        backoff = self._backoff_base_s
 
         while self._running:
             try:
                 await self._connect()
-                backoff = BACKOFF_BASE_S  # Reset on successful connection
+                backoff = self._backoff_base_s  # Reset on successful connection
 
                 # Stay connected until disconnect or stop
                 while self._running and self._ble.is_connected:
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(self._poll_interval_s)
 
                 # If we get here, BLE disconnected
                 await self._disconnect()
@@ -167,7 +174,7 @@ class TickrReader:
             if self._running:
                 logger.info("TICKR reconnecting in %.1fs", backoff)
                 await asyncio.sleep(backoff)
-                backoff = min(backoff * 2, BACKOFF_MAX_S)
+                backoff = min(backoff * 2, self._backoff_max_s)
 
     async def _connect(self) -> None:
         """Connect to TICKR and subscribe to HR notifications."""
