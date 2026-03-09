@@ -4,6 +4,31 @@ Read this before writing any code. For full specs, see `docs/`.
 
 ---
 
+## Task Tracking (TASKS.md)
+
+All work is tracked in `TASKS.md`. Follow this protocol every time.
+
+**Before starting any work:**
+1. Read `TASKS.md` in full
+2. Find an `available` task that fits your scope
+3. Set its status to `in_progress` and add a short agent ID (e.g. your session name or a short descriptor like `agent-s4`)
+4. Only then start coding
+
+**While working:**
+- One task at a time — do not claim a second task until the first is `done`
+- If you get blocked, set status to `blocked` and add a note in the Agent column explaining why
+
+**When done:**
+- Set status to `done`, clear the agent ID
+- Run the phase's exit criteria tests before marking done
+- Never mark done if tests are failing
+
+**Never:**
+- Start a task already marked `in_progress` or `done`
+- Skip claiming — silent parallel work causes duplicate effort
+
+---
+
 ## Docs to Read First
 
 | Doc | When to read |
