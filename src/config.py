@@ -1,0 +1,79 @@
+"""Application configuration via pydantic-settings, loaded from config.toml."""
+
+from pathlib import Path
+from typing import Any, ClassVar
+
+from pydantic import BaseModel
+from pydantic_settings import BaseSettings, SettingsConfigDict, TomlConfigSettingsSource
+
+
+class ServerSettings(BaseModel):
+    host: str = "0.0.0.0"
+    port: int = 8080
+    mdns_name: str = "waterrower"
+
+
+class S4Settings(BaseModel):
+    port: str = "/dev/ttyACM0"
+    baud_rate: int = 19200
+    poll_interval_hz: float = 1.0
+    reconnect_delay_s: int = 5
+
+
+class HeartRateSettings(BaseModel):
+    enabled: bool = True
+    device_mac: str = ""
+    device_name: str = ""
+    required: bool = False
+
+
+class WorkoutSettings(BaseModel):
+    auto_pause_idle_s: int = 30
+    auto_end_idle_s: int = 300
+    min_workout_distance_m: float = 100.0
+
+
+class StravaSettings(BaseModel):
+    client_id: str = ""
+    client_secret: str = ""
+
+
+class StorageSettings(BaseModel):
+    db_path: str = "data/buoycast.db"
+    fit_dir: str = "data/fit"
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        toml_file="config.toml",
+    )
+
+    # Class-level override for toml path (used by load_settings)
+    _toml_path: ClassVar[str | None] = None
+
+    server: ServerSettings = ServerSettings()
+    s4: S4Settings = S4Settings()
+    heart_rate: HeartRateSettings = HeartRateSettings()
+    workout: WorkoutSettings = WorkoutSettings()
+    strava: StravaSettings = StravaSettings()
+    storage: StorageSettings = StorageSettings()
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        **kwargs: Any,
+    ) -> tuple[Any, ...]:
+        toml_file = cls._toml_path or "config.toml"
+        return (
+            TomlConfigSettingsSource(settings_cls, toml_file=Path(toml_file)),
+        )
+
+
+def load_settings(toml_path: str | Path | None = None) -> Settings:
+    """Load settings, optionally from a specific TOML file path."""
+    Settings._toml_path = str(toml_path) if toml_path else None
+    try:
+        return Settings()
+    finally:
+        Settings._toml_path = None

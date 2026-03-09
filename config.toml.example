@@ -1,15 +1,27 @@
-[s4]
-port = "/dev/ttyACM0"  # USB serial port for WaterRower S4
-
-[tickr]
-mac = ""  # Wahoo TICKR MAC address (e.g. "A4:34:F1:XX:XX:XX")
-
-[web]
+[server]
 host = "0.0.0.0"
 port = 8080
+mdns_name = "waterrower"       # accessible at waterrower.local
+
+[s4]
+port = "/dev/ttyACM0"          # USB serial port for WaterRower S4
+baud_rate = 19200
+poll_interval_hz = 1.0
+reconnect_delay_s = 5
+
+[heart_rate]
+enabled = true
+device_mac = ""                # Wahoo TICKR MAC (e.g. "A4:34:F1:XX:XX:XX")
+device_name = ""               # e.g. "TICKR XXXX"
+required = false               # workout proceeds without HR if strap unavailable
+
+[workout]
+auto_pause_idle_s = 30         # pause after 30s no strokes
+auto_end_idle_s = 300          # prompt to end after 5min idle
+min_workout_distance_m = 100   # discard workouts under 100m
 
 [strava]
-client_id = ""
+client_id = ""                 # from your Strava API app
 client_secret = ""
 
 [storage]
