@@ -16,6 +16,7 @@ from starlette.requests import Request
 
 from src.events import EventBus, EventType
 from src.models import RowingMetrics, WorkoutState, WSMessage
+from src.web.routes.strava import router as strava_router
 from src.web.routes.workouts import router as workouts_router
 from src.workout.state import InvalidTransitionError, WorkoutStateMachine
 
@@ -33,6 +34,7 @@ class AppState:
         self.tickr_connected: bool = False
         self.start_time: float = time.monotonic()
         self.last_metrics_ts: datetime | None = None
+        self.strava_auth: Any = None
         self.ws_clients: set[WebSocket] = set()
 
 
@@ -40,6 +42,7 @@ def create_app(
     event_bus: EventBus | None = None,
     state_machine: WorkoutStateMachine | None = None,
     db: Any = None,
+    strava_auth: Any = None,
 ) -> FastAPI:
     """Create and configure the FastAPI application.
 
@@ -52,6 +55,7 @@ def create_app(
     app_state.event_bus = event_bus
     app_state.state_machine = state_machine
     app_state.db = db
+    app_state.strava_auth = strava_auth
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -95,6 +99,7 @@ def create_app(
 
     # Include routers
     app.include_router(workouts_router, prefix="/api")
+    app.include_router(strava_router, prefix="/api")
 
     # Status endpoint
     @app.get("/api/status")

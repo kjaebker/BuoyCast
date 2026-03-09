@@ -102,9 +102,9 @@ Before starting any task, set its status to `in_progress`. Mark `done` when comp
 
 | ID | Task | Status |
 |---|---|---|
-| 8.1 | OAuth flow — auth URL build, callback token exchange, token storage, auto-refresh, revoke (`src/strava/auth.py`) | available |
-| 8.2 | Upload — FIT upload to Strava API, status polling, UPLOADED/FAILED handling, retry support (`src/strava/upload.py`) | available |
-| 8.3 | Tests — OAuth URL, token exchange, auto-refresh, upload with correct sport type, status polling, failure handling (`tests/integration/test_strava.py`) | available |
+| 8.1 | OAuth flow — auth URL build, callback token exchange, token storage, auto-refresh, revoke (`src/strava/auth.py`) | done |
+| 8.2 | Upload — FIT upload to Strava API, status polling, UPLOADED/FAILED handling, retry support (`src/strava/upload.py`) | done |
+| 8.3 | Tests — OAuth URL, token exchange, auto-refresh, upload with correct sport type, status polling, failure handling (`tests/integration/test_strava.py`) | done |
 
 **Phase 8 exit criteria:** `pytest tests/integration/test_strava.py` passes. Manual end-to-end Strava upload verified.
 

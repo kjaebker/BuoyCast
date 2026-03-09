@@ -109,14 +109,21 @@ async def end_workout(request: Request):
 
 
 @router.post("/workouts/{workout_id}/upload")
-async def upload_workout(request: Request, workout_id: str):
+async def upload_workout_endpoint(request: Request, workout_id: str):
     """Trigger Strava upload for a workout. Returns 202 Accepted."""
     state = _get_state(request)
     workout = await get_workout(state.db, workout_id)
     if workout is None:
         return JSONResponse(status_code=404, content={"detail": "Workout not found"})
 
-    # TODO: Trigger actual Strava upload as background task (Phase 8)
+    auth = state.strava_auth
+    if auth is not None:
+        from src.strava.upload import upload_workout
+
+        import asyncio
+
+        asyncio.create_task(upload_workout(workout_id, state.db, auth))
+
     return JSONResponse(
         status_code=202,
         content={"status": "upload_queued", "workout_id": workout_id},

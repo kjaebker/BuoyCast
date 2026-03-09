@@ -60,6 +60,20 @@ MIGRATIONS: list[tuple[int, str, str]] = [
         );
         """,
     ),
+    (
+        2,
+        "strava token storage",
+        """
+        CREATE TABLE IF NOT EXISTS strava_tokens (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            access_token TEXT NOT NULL,
+            refresh_token TEXT NOT NULL,
+            expires_at INTEGER NOT NULL,
+            athlete_id INTEGER,
+            athlete_name TEXT
+        );
+        """,
+    ),
 ]
 
 
