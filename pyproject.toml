@@ -17,6 +17,7 @@ dependencies = [
     "httpx>=0.28",
     "structlog>=24.4",
     "garmin-fit-sdk>=21.158",
+    "fit-tool>=0.9.15",
 ]
 
 [project.optional-dependencies]
