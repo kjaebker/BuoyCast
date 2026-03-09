@@ -21,6 +21,7 @@ class EventType(str, Enum):
     S4_CONNECTED = "s4_connected"
     S4_DISCONNECTED = "s4_disconnected"
     MERGED_METRICS = "merged_metrics"
+    IDLE_WARNING = "idle_warning"
     STRAVA_UPLOAD_STATUS = "strava_upload_status"
 
 
