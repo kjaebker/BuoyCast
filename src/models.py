@@ -70,7 +70,7 @@ class WorkoutRecord(BaseModel):
 
     id: str
     started_at: datetime
-    ended_at: datetime
+    ended_at: datetime | None = None
     total_distance_m: float = Field(ge=0)
     total_strokes: int = Field(ge=0)
     elapsed_seconds: int = Field(ge=0)
