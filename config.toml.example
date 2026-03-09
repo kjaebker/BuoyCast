@@ -1,0 +1,17 @@
+[s4]
+port = "/dev/ttyACM0"  # USB serial port for WaterRower S4
+
+[tickr]
+mac = ""  # Wahoo TICKR MAC address (e.g. "A4:34:F1:XX:XX:XX")
+
+[web]
+host = "0.0.0.0"
+port = 8080
+
+[strava]
+client_id = ""
+client_secret = ""
+
+[storage]
+db_path = "data/buoycast.db"
+fit_dir = "data/fit"

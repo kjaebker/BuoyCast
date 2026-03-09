@@ -179,3 +179,12 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+# Dashboard
+dashboard/node_modules/
+dashboard/dist/
+
+# BuoyCast
+config.toml
+*.fit
+data/
