@@ -1,0 +1,200 @@
+"""FastAPI app factory with lifespan, CORS, WebSocket, and static file serving."""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import time
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+from typing import Any
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette.requests import Request
+
+from src.events import EventBus, EventType
+from src.models import RowingMetrics, WorkoutState, WSMessage
+from src.web.routes.workouts import router as workouts_router
+from src.workout.state import InvalidTransitionError, WorkoutStateMachine
+
+logger = logging.getLogger(__name__)
+
+
+class AppState:
+    """Shared application state — injected into routes via app.state."""
+
+    def __init__(self) -> None:
+        self.event_bus: EventBus | None = None
+        self.state_machine: WorkoutStateMachine | None = None
+        self.db: Any = None
+        self.s4_connected: bool = False
+        self.tickr_connected: bool = False
+        self.start_time: float = time.monotonic()
+        self.last_metrics_ts: datetime | None = None
+        self.ws_clients: set[WebSocket] = set()
+
+
+def create_app(
+    event_bus: EventBus | None = None,
+    state_machine: WorkoutStateMachine | None = None,
+    db: Any = None,
+) -> FastAPI:
+    """Create and configure the FastAPI application.
+
+    Args:
+        event_bus: Shared event bus (None for testing without events).
+        state_machine: Workout state machine instance.
+        db: Database instance.
+    """
+    app_state = AppState()
+    app_state.event_bus = event_bus
+    app_state.state_machine = state_machine
+    app_state.db = db
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        # Start WebSocket broadcast task if event bus is available
+        ws_task = None
+        if app_state.event_bus is not None:
+            ws_task = asyncio.create_task(_ws_broadcast_loop(app_state))
+        yield
+        if ws_task is not None:
+            ws_task.cancel()
+            try:
+                await ws_task
+            except asyncio.CancelledError:
+                pass
+
+    app = FastAPI(
+        title="BuoyCast",
+        version="0.1.0",
+        lifespan=lifespan,
+    )
+
+    # Store state on the app
+    app.state.app_state = app_state
+
+    # CORS for development (dashboard on different port)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    # Global exception handler for InvalidTransitionError -> 409
+    @app.exception_handler(InvalidTransitionError)
+    async def transition_error_handler(request: Request, exc: InvalidTransitionError):
+        return JSONResponse(
+            status_code=409,
+            content={"detail": str(exc)},
+        )
+
+    # Include routers
+    app.include_router(workouts_router, prefix="/api")
+
+    # Status endpoint
+    @app.get("/api/status")
+    async def get_status():
+        sm = app_state.state_machine
+        return {
+            "s4_connected": app_state.s4_connected,
+            "tickr_connected": app_state.tickr_connected,
+            "workout_state": sm.state.value if sm else WorkoutState.IDLE.value,
+            "uptime_seconds": int(time.monotonic() - app_state.start_time),
+            "last_metrics_ts": (
+                app_state.last_metrics_ts.isoformat()
+                if app_state.last_metrics_ts
+                else None
+            ),
+        }
+
+    # WebSocket endpoint
+    @app.websocket("/ws/live")
+    async def ws_live(websocket: WebSocket):
+        await websocket.accept()
+        app_state.ws_clients.add(websocket)
+        logger.info("WebSocket client connected (%d total)", len(app_state.ws_clients))
+        try:
+            while True:
+                # Keep connection alive — wait for client messages (ping/close)
+                await websocket.receive_text()
+        except WebSocketDisconnect:
+            pass
+        finally:
+            app_state.ws_clients.discard(websocket)
+            logger.info(
+                "WebSocket client disconnected (%d remaining)",
+                len(app_state.ws_clients),
+            )
+
+    return app
+
+
+async def _ws_broadcast_loop(app_state: AppState) -> None:
+    """Subscribe to events and broadcast to all connected WebSocket clients."""
+    bus = app_state.event_bus
+    if bus is None:
+        return
+
+    # Subscribe to merged metrics and all workout state events
+    metrics_q = bus.subscribe(EventType.MERGED_METRICS)
+    started_q = bus.subscribe(EventType.WORKOUT_STARTED)
+    paused_q = bus.subscribe(EventType.WORKOUT_PAUSED)
+    resumed_q = bus.subscribe(EventType.WORKOUT_RESUMED)
+    ended_q = bus.subscribe(EventType.WORKOUT_ENDED)
+    idle_q = bus.subscribe(EventType.IDLE_WARNING)
+
+    queues = [metrics_q, started_q, paused_q, resumed_q, ended_q, idle_q]
+
+    while True:
+        # Wait for any event from any queue
+        done, _ = await asyncio.wait(
+            [asyncio.create_task(q.get()) for q in queues],
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+
+        for task in done:
+            try:
+                event = task.result()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                continue
+
+            # Update last metrics timestamp
+            if event.type == EventType.MERGED_METRICS and isinstance(
+                event.data, RowingMetrics
+            ):
+                app_state.last_metrics_ts = event.data.timestamp
+
+            # Build WSMessage
+            if event.type == EventType.MERGED_METRICS and isinstance(
+                event.data, RowingMetrics
+            ):
+                msg = WSMessage(
+                    type="metrics_update",
+                    data=event.data.model_dump(mode="json"),
+                )
+            else:
+                msg = WSMessage(
+                    type=event.type.value,
+                    data=event.data if isinstance(event.data, dict) else {},
+                )
+
+            # Broadcast to all clients
+            msg_json = msg.model_dump_json()
+            disconnected = set()
+            for ws in app_state.ws_clients:
+                try:
+                    await ws.send_text(msg_json)
+                except Exception:
+                    disconnected.add(ws)
+            app_state.ws_clients -= disconnected
+
+        # Cancel remaining pending tasks
+        for task in _ if _ else set():
+            task.cancel()

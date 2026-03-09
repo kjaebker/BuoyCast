@@ -88,11 +88,11 @@ Before starting any task, set its status to `in_progress`. Mark `done` when comp
 
 | ID | Task | Status |
 |---|---|---|
-| 7.1 | FastAPI app — app factory, lifespan manager, static file serving, CORS, global exception handler (`src/web/server.py`) | available |
-| 7.2 | Workout routes — all CRUD + control + upload endpoints, Pydantic response models (`src/web/routes/workouts.py`) | available |
-| 7.3 | WebSocket — WS /ws/live, broadcast on MERGED_METRICS, state change events, multi-client support, clean disconnect handling | available |
-| 7.4 | System status endpoint — GET /api/status with S4/TICKR state, workout state, uptime, last metrics timestamp | available |
-| 7.5 | Tests — all endpoints, state transitions, 409 handling, 202 upload, WebSocket (`tests/integration/test_api.py`) | available |
+| 7.1 | FastAPI app — app factory, lifespan manager, static file serving, CORS, global exception handler (`src/web/server.py`) | done |
+| 7.2 | Workout routes — all CRUD + control + upload endpoints, Pydantic response models (`src/web/routes/workouts.py`) | done |
+| 7.3 | WebSocket — WS /ws/live, broadcast on MERGED_METRICS, state change events, multi-client support, clean disconnect handling | done |
+| 7.4 | System status endpoint — GET /api/status with S4/TICKR state, workout state, uptime, last metrics timestamp | done |
+| 7.5 | Tests — all endpoints, state transitions, 409 handling, 202 upload, WebSocket (`tests/integration/test_api.py`) | done |
 
 **Phase 7 exit criteria:** `pytest tests/integration/test_api.py` passes. All endpoints returning correct Pydantic response shapes.
 

@@ -1,0 +1,317 @@
+"""Integration tests for REST API + WebSocket endpoints."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+from datetime import datetime, timedelta, timezone
+
+import pytest
+from httpx import ASGITransport, AsyncClient
+
+from src.events import EventBus, EventType
+from src.models import (
+    RowingMetrics,
+    StrokeRecord,
+    StravaUploadStatus,
+    WorkoutRecord,
+    WorkoutState,
+)
+from src.storage.db import Database
+from src.storage.queries import get_workout, insert_strokes, insert_workout
+from src.web.server import create_app
+from src.workout.state import WorkoutStateMachine
+
+
+# --- Fixtures ---
+
+
+@pytest.fixture
+async def db():
+    d = Database(":memory:")
+    await d.connect()
+    yield d
+    await d.close()
+
+
+@pytest.fixture
+def event_bus():
+    return EventBus()
+
+
+@pytest.fixture
+def sm(event_bus):
+    return WorkoutStateMachine(event_bus)
+
+
+@pytest.fixture
+def app(event_bus, sm, db):
+    return create_app(event_bus=event_bus, state_machine=sm, db=db)
+
+
+@pytest.fixture
+async def client(app):
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+
+
+def _sample_workout(
+    workout_id: str = "w001",
+    ended: bool = True,
+) -> WorkoutRecord:
+    started = datetime(2026, 3, 9, 10, 0, 0, tzinfo=timezone.utc)
+    return WorkoutRecord(
+        id=workout_id,
+        started_at=started,
+        ended_at=started + timedelta(minutes=10) if ended else None,
+        total_distance_m=2000.0,
+        total_strokes=100,
+        elapsed_seconds=600,
+        avg_pace_s_per_500m=150.0,
+        avg_stroke_rate=28.0,
+        avg_power_watts=150.0,
+        avg_heart_rate=140,
+        max_heart_rate=160,
+        calories=120,
+    )
+
+
+def _sample_strokes(workout_id: str = "w001", count: int = 5) -> list[StrokeRecord]:
+    started = datetime(2026, 3, 9, 10, 0, 0, tzinfo=timezone.utc)
+    return [
+        StrokeRecord(
+            workout_id=workout_id,
+            ts=started + timedelta(seconds=i),
+            distance_m=float(i * 20),
+            stroke_rate=28.0,
+            power_watts=150.0,
+            pace_s_per_500m=150.0,
+            heart_rate_bpm=140,
+        )
+        for i in range(count)
+    ]
+
+
+# --- Status endpoint ---
+
+
+class TestStatusEndpoint:
+    async def test_status_returns_all_fields(self, client):
+        resp = await client.get("/api/status")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "s4_connected" in data
+        assert "tickr_connected" in data
+        assert "workout_state" in data
+        assert "uptime_seconds" in data
+        assert "last_metrics_ts" in data
+
+    async def test_status_default_values(self, client):
+        resp = await client.get("/api/status")
+        data = resp.json()
+        assert data["s4_connected"] is False
+        assert data["tickr_connected"] is False
+        assert data["workout_state"] == "IDLE"
+        assert data["uptime_seconds"] >= 0
+        assert data["last_metrics_ts"] is None
+
+    async def test_status_reflects_workout_state(self, client, sm):
+        await sm.start()
+        resp = await client.get("/api/status")
+        assert resp.json()["workout_state"] == "ACTIVE"
+
+
+# --- Workout CRUD ---
+
+
+class TestWorkoutList:
+    async def test_empty_list(self, client):
+        resp = await client.get("/api/workouts")
+        assert resp.status_code == 200
+        assert resp.json() == []
+
+    async def test_list_with_workouts(self, client, db):
+        await insert_workout(db, _sample_workout("w001"))
+        await insert_workout(db, _sample_workout("w002"))
+        resp = await client.get("/api/workouts")
+        assert resp.status_code == 200
+        assert len(resp.json()) == 2
+
+    async def test_list_pagination(self, client, db):
+        for i in range(5):
+            await insert_workout(db, _sample_workout(f"w{i:03d}"))
+        resp = await client.get("/api/workouts?limit=2&offset=0")
+        assert len(resp.json()) == 2
+        resp2 = await client.get("/api/workouts?limit=2&offset=2")
+        assert len(resp2.json()) == 2
+
+
+class TestWorkoutDetail:
+    async def test_get_existing(self, client, db):
+        await insert_workout(db, _sample_workout("w001"))
+        resp = await client.get("/api/workouts/w001")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["id"] == "w001"
+        assert data["total_distance_m"] == 2000.0
+
+    async def test_get_nonexistent(self, client):
+        resp = await client.get("/api/workouts/nope")
+        assert resp.status_code == 404
+
+
+class TestWorkoutStrokes:
+    async def test_get_strokes(self, client, db):
+        await insert_workout(db, _sample_workout("w001"))
+        await insert_strokes(db, _sample_strokes("w001", count=3))
+        resp = await client.get("/api/workouts/w001/strokes")
+        assert resp.status_code == 200
+        assert len(resp.json()) == 3
+
+    async def test_get_strokes_nonexistent(self, client):
+        resp = await client.get("/api/workouts/nope/strokes")
+        assert resp.status_code == 404
+
+
+class TestWorkoutDelete:
+    async def test_delete_existing(self, client, db):
+        await insert_workout(db, _sample_workout("w001"))
+        resp = await client.delete("/api/workouts/w001")
+        assert resp.status_code == 200
+        assert (await get_workout(db, "w001")) is None
+
+    async def test_delete_nonexistent(self, client):
+        resp = await client.delete("/api/workouts/nope")
+        assert resp.status_code == 404
+
+
+# --- Workout control ---
+
+
+class TestWorkoutControl:
+    async def test_start(self, client):
+        resp = await client.post("/api/workout/start")
+        assert resp.status_code == 200
+        assert resp.json()["state"] == "ACTIVE"
+
+    async def test_pause(self, client, sm):
+        await sm.start()
+        resp = await client.post("/api/workout/pause")
+        assert resp.status_code == 200
+        assert resp.json()["state"] == "PAUSED"
+
+    async def test_resume(self, client, sm):
+        await sm.start()
+        await sm.pause()
+        resp = await client.post("/api/workout/resume")
+        assert resp.status_code == 200
+        assert resp.json()["state"] == "ACTIVE"
+
+    async def test_end(self, client, sm):
+        await sm.start()
+        resp = await client.post("/api/workout/end")
+        assert resp.status_code == 200
+        assert resp.json()["state"] == "SUMMARY"
+
+    async def test_invalid_pause_from_idle_returns_409(self, client):
+        resp = await client.post("/api/workout/pause")
+        assert resp.status_code == 409
+
+    async def test_invalid_start_from_active_returns_409(self, client, sm):
+        await sm.start()
+        resp = await client.post("/api/workout/start")
+        assert resp.status_code == 409
+
+    async def test_invalid_resume_from_active_returns_409(self, client, sm):
+        await sm.start()
+        resp = await client.post("/api/workout/resume")
+        assert resp.status_code == 409
+
+    async def test_full_control_flow(self, client):
+        resp = await client.post("/api/workout/start")
+        assert resp.json()["state"] == "ACTIVE"
+        resp = await client.post("/api/workout/pause")
+        assert resp.json()["state"] == "PAUSED"
+        resp = await client.post("/api/workout/resume")
+        assert resp.json()["state"] == "ACTIVE"
+        resp = await client.post("/api/workout/end")
+        assert resp.json()["state"] == "SUMMARY"
+
+
+# --- Upload / skip ---
+
+
+class TestUploadAndSkip:
+    async def test_upload_returns_202(self, client, db):
+        await insert_workout(db, _sample_workout("w001"))
+        resp = await client.post("/api/workouts/w001/upload")
+        assert resp.status_code == 202
+        data = resp.json()
+        assert data["status"] == "upload_queued"
+
+    async def test_upload_nonexistent_returns_404(self, client):
+        resp = await client.post("/api/workouts/nope/upload")
+        assert resp.status_code == 404
+
+    async def test_skip_workout(self, client, db):
+        await insert_workout(db, _sample_workout("w001"))
+        resp = await client.post("/api/workouts/w001/skip")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "skipped"
+        # Verify in DB
+        w = await get_workout(db, "w001")
+        assert w.strava_upload_status == StravaUploadStatus.SKIPPED
+
+    async def test_skip_nonexistent_returns_404(self, client):
+        resp = await client.post("/api/workouts/nope/skip")
+        assert resp.status_code == 404
+
+
+# --- WebSocket ---
+
+
+class TestWebSocket:
+    async def test_ws_connect_and_disconnect(self, app):
+        """WebSocket client can connect and disconnect cleanly."""
+        from starlette.testclient import TestClient
+
+        with TestClient(app) as tc:
+            with tc.websocket_connect("/ws/live") as ws:
+                # Connection established
+                assert ws is not None
+
+    async def test_ws_receives_metrics(self, app, event_bus):
+        """WebSocket client receives metrics broadcast."""
+        from starlette.testclient import TestClient
+
+        with TestClient(app) as tc:
+            with tc.websocket_connect("/ws/live") as ws:
+                # Emit a merged metrics event
+                metrics = RowingMetrics(
+                    timestamp=datetime.now(tz=timezone.utc),
+                    stroke_rate=28.0,
+                    distance_m=100.0,
+                )
+                await event_bus.emit(EventType.MERGED_METRICS, data=metrics)
+
+                # Give broadcast loop time to process
+                await asyncio.sleep(0.05)
+
+                # Receive the message
+                msg = ws.receive_json(mode="text")
+                assert msg["type"] == "metrics_update"
+                assert msg["data"]["stroke_rate"] == 28.0
+
+    async def test_ws_receives_state_change(self, app, event_bus, sm):
+        """WebSocket client receives workout state change events."""
+        from starlette.testclient import TestClient
+
+        with TestClient(app) as tc:
+            with tc.websocket_connect("/ws/live") as ws:
+                await sm.start()
+                await asyncio.sleep(0.05)
+
+                msg = ws.receive_json(mode="text")
+                assert msg["type"] == "workout_started"
+                assert msg["data"]["new_state"] == "ACTIVE"
