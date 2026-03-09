@@ -135,7 +135,7 @@ Before starting any task, set its status to `in_progress`. Mark `done` when comp
 | 10.1 | Install script — system deps, venv, dashboard build, config.toml template, systemd service, Avahi mDNS, post-install checklist (`install.sh`) | done |
 | 10.2 | systemd service — Restart=always, After=bluetooth.target, journald logging (`waterrower.service`) | done |
 | 10.3 | Headless Pi OS setup docs — Imager settings, SSH, install script, Strava OAuth, TICKR MAC, verify with curl | done |
-| 10.4 | Hardware verification checklist — USB OTG → S4 beep, TICKR auto-connect, FTMS visible to Peloton | available |
+| 10.4 | Hardware verification checklist — USB OTG → S4 beep, TICKR auto-connect, FTMS visible to Peloton | done |
 
 **Phase 10 exit criteria:** Clean Pi install → `install.sh` → working system. Verified on physical hardware.
 
