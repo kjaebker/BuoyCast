@@ -76,9 +76,9 @@ Before starting any task, set its status to `in_progress`. Mark `done` when comp
 
 | ID | Task | Status |
 |---|---|---|
-| 6.1 | FTMS broadcaster — BlueZ D-Bus GATT server, advertise as BuoyCast, Rower Data characteristic 0x2AD1, ~1Hz updates, client disconnect → restart advertising (`src/ble/ftms.py`) | available |
-| 6.2 | FTMS byte packing — flags field, stroke rate uint8 (×2), distance uint24, pace uint16, power int16, HR uint8 conditional | available |
-| 6.3 | Tests — FTMS packing unit tests (`tests/unit/test_ftms_packing.py`) + manual Peloton connection checklist | available |
+| 6.1 | FTMS broadcaster — BlueZ D-Bus GATT server, advertise as BuoyCast, Rower Data characteristic 0x2AD1, ~1Hz updates, client disconnect → restart advertising (`src/ble/ftms.py`) | done |
+| 6.2 | FTMS byte packing — flags field, stroke rate uint8 (×2), distance uint24, pace uint16, power int16, HR uint8 conditional | done |
+| 6.3 | Tests — FTMS packing unit tests (`tests/unit/test_ftms_packing.py`) + manual Peloton connection checklist | done |
 
 **Phase 6 exit criteria:** `pytest tests/unit/test_ftms_packing.py` passes. Manual BLE connection verified with Peloton app on device.
 
