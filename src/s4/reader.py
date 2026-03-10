@@ -40,6 +40,33 @@ from src.s4.protocol import (
 logger = logging.getLogger(__name__)
 
 
+class AsyncSerial:
+    """Wraps a synchronous pyserial Serial object to satisfy the SerialPort protocol."""
+
+    def __init__(self, port: object) -> None:
+        self._serial = port
+
+    async def open(self) -> None:
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, self._serial.open)
+
+    async def close(self) -> None:
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, self._serial.close)
+
+    async def readline(self) -> bytes:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._serial.readline)
+
+    async def write(self, data: bytes) -> None:
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, self._serial.write, data)
+
+    @property
+    def is_open(self) -> bool:
+        return self._serial.is_open  # type: ignore[no-any-return]
+
+
 class SerialPort(Protocol):
     """Minimal serial port interface — allows injection of real or mock serial."""
 

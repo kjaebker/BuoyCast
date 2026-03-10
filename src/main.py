@@ -77,11 +77,12 @@ async def run(settings: Settings) -> None:
     try:
         import serial
 
-        from src.s4.reader import S4Reader
+        from src.s4.reader import AsyncSerial, S4Reader
 
-        serial_port = serial.Serial()
-        serial_port.port = settings.s4.port
-        serial_port.baudrate = settings.s4.baud_rate
+        _raw_serial = serial.Serial()
+        _raw_serial.port = settings.s4.port
+        _raw_serial.baudrate = settings.s4.baud_rate
+        serial_port = AsyncSerial(_raw_serial)
         s4_reader = S4Reader(serial_port, event_bus, settings.s4)
         await s4_reader.start()
         components.append(s4_reader)
