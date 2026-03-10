@@ -124,17 +124,19 @@ async def _upload_fit(
     workout_id: str,
 ) -> int | None:
     """POST FIT file to Strava. Returns upload_id or None on failure."""
-    with open(fit_path, "rb") as f:
-        resp = await client.post(
-            STRAVA_UPLOAD_URL,
-            headers={"Authorization": f"Bearer {access_token}"},
-            files={"file": (fit_path.name, f, "application/octet-stream")},
-            data={
-                "sport_type": "Rowing",
-                "data_type": "fit",
-                "name": f"BuoyCast Workout {workout_id}",
-            },
-        )
+    # Read file bytes off the event loop so we don't block on I/O.
+    # FIT files are small (typically < 100 KB) so a single read is fine.
+    file_bytes = await asyncio.to_thread(fit_path.read_bytes)
+    resp = await client.post(
+        STRAVA_UPLOAD_URL,
+        headers={"Authorization": f"Bearer {access_token}"},
+        files={"file": (fit_path.name, file_bytes, "application/octet-stream")},
+        data={
+            "sport_type": "Rowing",
+            "data_type": "fit",
+            "name": f"BuoyCast Workout {workout_id}",
+        },
+    )
     resp.raise_for_status()
     data = resp.json()
     return data.get("id")
