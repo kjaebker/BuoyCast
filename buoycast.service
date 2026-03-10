@@ -1,14 +1,15 @@
 [Unit]
 Description=BuoyCast — WaterRower S4 Bridge
 Documentation=https://github.com/your-org/BuoyCast
-After=network.target bluetooth.target
-Wants=avahi-daemon.service
+After=network.target bluetooth.target bluetooth.service hciuart.service
+Wants=avahi-daemon.service bluetooth.service
 
 [Service]
 Type=simple
 User=pi
 Group=pi
 WorkingDirectory=/opt/buoycast
+ExecStartPre=/usr/bin/bluetoothctl power on
 ExecStart=/opt/buoycast/.venv/bin/python -m src.main
 Restart=always
 RestartSec=5
