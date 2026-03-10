@@ -51,7 +51,7 @@ fi
 
 # ── Update Python dependencies ────────────────────────────────────────
 info "Updating Python dependencies..."
-"$INSTALL_DIR/.venv/bin/pip" install -e "$INSTALL_DIR" -q
+sudo -u pi "$INSTALL_DIR/.venv/bin/pip" install -e "$INSTALL_DIR" -q
 
 # ── Restart service ───────────────────────────────────────────────────
 info "Restarting service..."
