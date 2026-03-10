@@ -36,6 +36,7 @@ elif [[ -f "$INSTALL_DIR/.source_dir" ]]; then
             --exclude='node_modules' \
             --exclude='data/' \
             --exclude='__pycache__' \
+            --exclude='config.toml' \
             "$SOURCE_DIR/" "$INSTALL_DIR/"
     else
         error "Source directory '$SOURCE_DIR' is missing or not a git repo. Re-clone and re-run install.sh."
