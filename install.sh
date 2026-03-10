@@ -83,7 +83,8 @@ info "Python packages installed"
 info "Building dashboard..."
 cd "$INSTALL_DIR/dashboard"
 npm ci --silent
-npm run build
+# Skip tsc type-check (dev-time only); run vite build directly
+npx vite build
 cd "$INSTALL_DIR"
 
 info "Dashboard built successfully"
