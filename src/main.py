@@ -63,6 +63,7 @@ async def run(settings: Settings) -> None:
         db=db,
         strava_auth=strava_auth,
     )
+    app_state = app.state.app_state
 
     # Track components for cleanup
     components = [merger, recorder, ftms]
@@ -82,10 +83,12 @@ async def run(settings: Settings) -> None:
         _raw_serial = serial.Serial()
         _raw_serial.port = settings.s4.port
         _raw_serial.baudrate = settings.s4.baud_rate
+        _raw_serial.timeout = 2.0  # readline() must not block forever in the executor
         serial_port = AsyncSerial(_raw_serial)
         s4_reader = S4Reader(serial_port, event_bus, settings.s4)
         await s4_reader.start()
         components.append(s4_reader)
+        app_state.s4_reader = s4_reader
     except ImportError:
         logger.warning("pyserial not available — S4 reader disabled")
     except Exception as exc:
