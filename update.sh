@@ -33,6 +33,7 @@ elif [[ -f "$INSTALL_DIR/.source_dir" ]]; then
         rsync -a --delete \
             --exclude='.git' \
             --exclude='.venv' \
+            --exclude='.source_dir' \
             --exclude='node_modules' \
             --exclude='data/' \
             --exclude='__pycache__' \
