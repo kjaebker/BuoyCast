@@ -195,7 +195,7 @@ class MockBLEClient:
     def is_connected(self) -> bool:
         return self._is_connected
 
-    async def connect(self, address: str) -> None:
+    async def connect(self) -> None:
         if self._should_fail_connect:
             raise OSError("Simulated: TICKR unavailable")
         self._is_connected = True

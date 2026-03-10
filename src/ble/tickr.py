@@ -29,7 +29,7 @@ BACKOFF_MAX_S = 30.0
 class BLEClient(Protocol):
     """Minimal BLE client interface — allows injection of real (bleak) or mock."""
 
-    async def connect(self, address: str) -> None: ...
+    async def connect(self) -> None: ...
     async def disconnect(self) -> None: ...
     async def start_notify(self, char_uuid: str, callback: NotifyCallback) -> None: ...
     async def stop_notify(self, char_uuid: str) -> None: ...
@@ -178,7 +178,7 @@ class TickrReader:
 
     async def _connect(self) -> None:
         """Connect to TICKR and subscribe to HR notifications."""
-        await self._ble.connect(self._settings.device_mac)
+        await self._ble.connect()
         await self._ble.start_notify(HR_MEASUREMENT_UUID, self._on_hr_notification)
         self._connected = True
         await self._bus.emit(EventType.TICKR_CONNECTED)
