@@ -9,6 +9,7 @@ Type=simple
 User=pi
 Group=pi
 WorkingDirectory=/opt/buoycast
+ExecStartPre=/usr/sbin/rfkill unblock bluetooth
 ExecStartPre=/usr/bin/bluetoothctl power on
 ExecStart=/opt/buoycast/.venv/bin/python -m src.main
 Restart=always
