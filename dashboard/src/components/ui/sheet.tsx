@@ -1,4 +1,4 @@
-import * as React from "react";
+﻿import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -49,7 +49,7 @@ function Sheet({ children, open: controlledOpen, onOpenChange }: SheetProps) {
       if (!isControlled) setInternalOpen(value);
       onOpenChange?.(value);
     },
-    [isControlled, onOpenChange]
+    [isControlled, onOpenChange],
   );
 
   React.useEffect(() => {
@@ -94,25 +94,25 @@ const SheetTrigger = React.forwardRef<HTMLButtonElement, SheetTriggerProps>(
         {...props}
       />
     );
-  }
+  },
 );
 SheetTrigger.displayName = "SheetTrigger";
 
 const sheetVariants = cva(
-  "fixed z-50 gap-4 bg-background text-foreground p-6 shadow-lg transition-transform duration-300 ease-in-out",
+  "fixed z-50 gap-4 border border-border/70 bg-[linear-gradient(180deg,color-mix(in_oklch,var(--color-card)_94%,transparent)_0%,color-mix(in_oklch,var(--color-background)_88%,black)_100%)] text-foreground shadow-[0_36px_80px_-32px_rgba(0,0,0,0.95)] transition-transform duration-300 ease-in-out backdrop-blur-xl",
   {
     variants: {
       side: {
-        top: "inset-x-0 top-0 m-0 max-h-[80vh] w-full border-b",
-        right: "inset-y-0 right-0 m-0 h-full w-3/4 max-w-sm border-l",
-        bottom: "inset-x-0 bottom-0 m-0 max-h-[80vh] w-full border-t",
-        left: "inset-y-0 left-0 m-0 h-full w-3/4 max-w-sm border-r",
+        top: "inset-x-0 top-0 m-0 max-h-[80vh] w-full rounded-b-[2rem] border-b",
+        right: "inset-y-0 right-0 m-0 h-full w-3/4 max-w-sm rounded-l-[2rem] border-l",
+        bottom: "inset-x-0 bottom-0 m-0 max-h-[88vh] w-full rounded-t-[2rem] border-t",
+        left: "inset-y-0 left-0 m-0 h-full w-3/4 max-w-sm rounded-r-[2rem] border-r",
       },
     },
     defaultVariants: {
       side: "right",
     },
-  }
+  },
 );
 
 interface SheetContentProps
@@ -135,7 +135,7 @@ const SheetContent = React.forwardRef<HTMLDialogElement, SheetContentProps>(
         if (typeof ref === "function") ref(node);
         else if (ref) (ref as React.MutableRefObject<HTMLDialogElement | null>).current = node;
       },
-      [dialogRef, ref]
+      [dialogRef, ref],
     );
 
     const handleBackdropClick = (e: React.MouseEvent<HTMLDialogElement>) => {
@@ -149,22 +149,24 @@ const SheetContent = React.forwardRef<HTMLDialogElement, SheetContentProps>(
         ref={combinedRef}
         className={cn(
           sheetVariants({ side }),
-          "backdrop:bg-black/80 p-0",
-          className
+          "overflow-hidden bg-transparent p-0 backdrop:bg-[color-mix(in_oklch,var(--color-background)_42%,black)]",
+          className,
         )}
         onClick={handleBackdropClick}
         {...props}
       >
-        <div className="flex h-full flex-col p-6">
+        <div className="relative h-full overflow-auto px-5 pb-6 pt-5">
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-[radial-gradient(circle_at_top,color-mix(in_oklch,var(--color-primary)_22%,transparent),transparent_70%)] opacity-90" />
+          <div className="pointer-events-none absolute right-0 top-10 h-24 w-24 rounded-full bg-[color-mix(in_oklch,var(--color-secondary)_22%,transparent)] blur-3xl" />
           {children}
-          <SheetClose className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
+          <SheetClose className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full border border-border/80 bg-card/70 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring">
             <X className="h-4 w-4" />
             <span className="sr-only">Close</span>
           </SheetClose>
         </div>
       </dialog>
     );
-  }
+  },
 );
 SheetContent.displayName = "SheetContent";
 
@@ -174,10 +176,7 @@ const SheetHeader = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn(
-      "flex flex-col space-y-2 text-center sm:text-left",
-      className
-    )}
+    className={cn("flex flex-col space-y-2 text-center sm:text-left", className)}
     {...props}
   />
 ));
@@ -189,10 +188,7 @@ const SheetFooter = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn(
-      "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
-      className
-    )}
+    className={cn("flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2", className)}
     {...props}
   />
 ));
@@ -237,7 +233,7 @@ const SheetClose = React.forwardRef<HTMLButtonElement, SheetCloseProps>(
         {...props}
       />
     );
-  }
+  },
 );
 SheetClose.displayName = "SheetClose";
 

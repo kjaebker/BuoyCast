@@ -1,5 +1,5 @@
-/**
- * WorkoutHistory — paginated list of completed workouts.
+﻿/**
+ * WorkoutHistory - paginated list of completed workouts.
  *
  * Per-workout Strava status badges, upload/retry/link actions.
  * Uses Sheet for mobile slide-up detail panel.
@@ -15,6 +15,11 @@ import {
   ExternalLink,
   Trash2,
   X,
+  Gauge,
+  Activity,
+  Zap,
+  Flame,
+  Heart,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +28,7 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
+  SheetDescription,
 } from "@/components/ui/sheet";
 import { formatTime, formatDistance, formatPace, formatNum } from "@/lib/format";
 import * as api from "@/lib/api";
@@ -41,9 +47,50 @@ const statusBadgeVariant: Record<
   SKIPPED: "secondary",
 };
 
+const statusBadgeClassName: Record<StravaUploadStatus, string> = {
+  PENDING: "border-[color-mix(in_oklch,var(--color-primary)_36%,transparent)] bg-[color-mix(in_oklch,var(--color-primary)_12%,transparent)] text-primary",
+  UPLOADING: "border-transparent bg-[color-mix(in_oklch,var(--color-secondary)_24%,transparent)] text-secondary-foreground",
+  UPLOADED: "border-transparent bg-[color-mix(in_oklch,var(--color-secondary)_34%,transparent)] text-secondary-foreground",
+  FAILED: "border-transparent bg-[color-mix(in_oklch,var(--color-destructive)_20%,transparent)] text-[color-mix(in_oklch,var(--color-destructive)_84%,white)]",
+  SKIPPED: "border-transparent bg-muted text-muted-foreground",
+};
+
 type WorkoutHistoryProps = {
   visible: boolean;
 };
+
+type DetailStatTone = "ember" | "teal" | "rose" | "slate";
+
+type DetailStatProps = {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  tone?: DetailStatTone;
+};
+
+const detailStatToneClasses: Record<DetailStatTone, string> = {
+  ember:
+    "border-[color-mix(in_oklch,var(--color-primary)_26%,transparent)] bg-[color-mix(in_oklch,var(--color-primary)_12%,var(--color-card))] text-primary",
+  teal:
+    "border-[color-mix(in_oklch,var(--color-secondary)_28%,transparent)] bg-[color-mix(in_oklch,var(--color-secondary)_14%,var(--color-card))] text-secondary-foreground",
+  rose:
+    "border-[color-mix(in_oklch,var(--color-destructive)_24%,transparent)] bg-[color-mix(in_oklch,var(--color-destructive)_12%,var(--color-card))] text-[color-mix(in_oklch,var(--color-destructive)_84%,white)]",
+  slate: "border-border/80 bg-card/70 text-foreground",
+};
+
+function DetailStat({ icon, label, value, tone = "slate" }: DetailStatProps) {
+  return (
+    <div className={`rounded-[1.35rem] border p-4 shadow-[0_16px_34px_-28px_rgba(0,0,0,0.95)] ${detailStatToneClasses[tone]}`}>
+      <div className="mb-3 flex items-center gap-2 text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-current/75">
+        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-black/10 text-current">
+          {icon}
+        </span>
+        {label}
+      </div>
+      <div className="text-lg font-semibold tabular-nums text-foreground">{value}</div>
+    </div>
+  );
+}
 
 export function WorkoutHistory({ visible }: WorkoutHistoryProps) {
   const [workouts, setWorkouts] = useState<WorkoutRecord[]>([]);
@@ -83,24 +130,33 @@ export function WorkoutHistory({ visible }: WorkoutHistoryProps) {
   if (!visible) return null;
 
   return (
-    <div className="flex-1 overflow-auto p-4">
-      <h2 className="text-lg font-bold mb-3">Workout History</h2>
+    <div className="flex-1 overflow-auto px-4 pb-4 pt-5">
+      <div className="mb-4 flex items-end justify-between gap-3">
+        <div>
+          <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-primary/80">
+            Past sessions
+          </div>
+          <h2 className="mt-1 text-2xl font-bold tracking-tight text-foreground">
+            Workout History
+          </h2>
+        </div>
+      </div>
 
       {workouts.length === 0 && (
-        <div className="text-center text-muted-foreground py-8">
+        <div className="rounded-[1.5rem] border border-border/80 bg-card/70 px-4 py-8 text-center text-muted-foreground">
           No workouts yet
         </div>
       )}
 
-      <div className="space-y-2">
+      <div className="space-y-3">
         {workouts.map((w) => (
           <button
             key={w.id}
-            className="w-full text-left rounded-xl bg-card p-3 shadow-sm border border-border flex items-center gap-3 active:bg-accent transition-colors"
+            className="group flex w-full items-center gap-3 rounded-[1.5rem] border border-border/80 bg-[linear-gradient(135deg,color-mix(in_oklch,var(--color-card)_90%,transparent)_0%,color-mix(in_oklch,var(--color-primary)_8%,var(--color-card))_100%)] p-4 text-left shadow-[0_18px_40px_-32px_rgba(0,0,0,0.95)] transition-colors active:bg-accent/50"
             onClick={() => setSelected(w)}
           >
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium truncate">
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-semibold text-foreground">
                 {new Date(w.started_at).toLocaleDateString(undefined, {
                   month: "short",
                   day: "numeric",
@@ -108,21 +164,24 @@ export function WorkoutHistory({ visible }: WorkoutHistoryProps) {
                   minute: "2-digit",
                 })}
               </div>
-              <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
+              <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
                 <span className="flex items-center gap-1">
-                  <Clock className="h-3 w-3" />
+                  <Clock className="h-3 w-3 text-primary/90" />
                   {formatTime(w.elapsed_seconds)}
                 </span>
                 <span className="flex items-center gap-1">
-                  <Ruler className="h-3 w-3" />
+                  <Ruler className="h-3 w-3 text-secondary-foreground" />
                   {formatDistance(w.total_distance_m)}m
                 </span>
               </div>
             </div>
-            <Badge variant={statusBadgeVariant[w.strava_upload_status]}>
+            <Badge
+              variant={statusBadgeVariant[w.strava_upload_status]}
+              className={statusBadgeClassName[w.strava_upload_status]}
+            >
               {w.strava_upload_status}
             </Badge>
-            <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-active:translate-x-0.5" />
           </button>
         ))}
       </div>
@@ -130,7 +189,7 @@ export function WorkoutHistory({ visible }: WorkoutHistoryProps) {
       {hasMore && workouts.length > 0 && (
         <Button
           variant="ghost"
-          className="w-full mt-3"
+          className="mt-3 w-full rounded-2xl border border-border/80 bg-card/55"
           onClick={() => {
             const newOffset = offset + PAGE_SIZE;
             setOffset(newOffset);
@@ -141,93 +200,102 @@ export function WorkoutHistory({ visible }: WorkoutHistoryProps) {
         </Button>
       )}
 
-      {/* Detail sheet */}
       <Sheet open={selected !== null} onOpenChange={() => setSelected(null)}>
         <SheetContent side="bottom">
           {selected && (
             <>
-              {/* Drag-handle hint */}
-              <div className="flex justify-center pb-2 -mt-2">
-                <div className="w-10 h-1 rounded-full bg-muted-foreground/30" />
-              </div>
+              <div className="relative z-10 mx-auto mb-4 h-1.5 w-12 rounded-full bg-muted-foreground/30" />
 
-              <SheetHeader>
-                <SheetTitle>
+              <SheetHeader className="relative z-10 mb-4 pr-12">
+                <div className="inline-flex w-fit items-center rounded-full border border-[color-mix(in_oklch,var(--color-primary)_28%,transparent)] bg-[color-mix(in_oklch,var(--color-primary)_14%,transparent)] px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-primary">
+                  Saved workout
+                </div>
+                <SheetTitle className="mt-2 text-2xl font-bold tracking-tight">
                   {new Date(selected.started_at).toLocaleDateString(undefined, {
                     weekday: "long",
                     month: "long",
                     day: "numeric",
+                  })}
+                </SheetTitle>
+                <SheetDescription>
+                  Started at {new Date(selected.started_at).toLocaleTimeString(undefined, {
                     hour: "2-digit",
                     minute: "2-digit",
                   })}
-                </SheetTitle>
+                </SheetDescription>
               </SheetHeader>
 
-              <div className="py-4 space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Duration</span>
-                  <span className="font-medium tabular-nums">
-                    {formatTime(selected.elapsed_seconds)}
-                  </span>
+              <div className="relative z-10 rounded-[1.75rem] border border-[color-mix(in_oklch,var(--color-primary)_24%,transparent)] bg-[linear-gradient(135deg,color-mix(in_oklch,var(--color-primary)_20%,var(--color-card))_0%,color-mix(in_oklch,var(--color-secondary)_16%,var(--color-card))_100%)] px-5 py-5 shadow-[0_24px_56px_-34px_rgba(0,0,0,0.95)]">
+                <div className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-primary/80">
+                  Session snapshot
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Distance</span>
-                  <span className="font-medium tabular-nums">
-                    {formatDistance(selected.total_distance_m)} m
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Avg Pace</span>
-                  <span className="font-medium tabular-nums">
-                    {formatPace(selected.avg_pace_s_per_500m)} /500m
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Strokes</span>
-                  <span className="font-medium tabular-nums">
-                    {selected.total_strokes}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Avg Stroke Rate</span>
-                  <span className="font-medium tabular-nums">
-                    {formatNum(selected.avg_stroke_rate, 1)} spm
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Avg Power</span>
-                  <span className="font-medium tabular-nums">
-                    {formatNum(selected.avg_power_watts)} W
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Calories</span>
-                  <span className="font-medium tabular-nums">
-                    {selected.calories}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Avg / Max HR</span>
-                  <span className="font-medium tabular-nums">
-                    {selected.avg_heart_rate != null
-                      ? `${selected.avg_heart_rate} / ${selected.max_heart_rate ?? "–"} bpm`
-                      : "–"}
-                  </span>
+                <div className="mt-2 flex items-end gap-3">
+                  <div>
+                    <div className="text-3xl font-bold tabular-nums text-foreground">
+                      {formatDistance(selected.total_distance_m)}
+                    </div>
+                    <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                      meters rowed
+                    </div>
+                  </div>
+                  <div className="mb-1 rounded-full border border-[color-mix(in_oklch,var(--color-secondary)_24%,transparent)] bg-[color-mix(in_oklch,var(--color-secondary)_16%,transparent)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-secondary-foreground">
+                    {selected.strava_upload_status}
+                  </div>
                 </div>
               </div>
 
-              <div className="flex gap-2 pt-2">
+              <div className="relative z-10 mt-4 grid grid-cols-2 gap-3">
+                <DetailStat
+                  icon={<Clock className="h-4 w-4" />}
+                  label="Duration"
+                  value={formatTime(selected.elapsed_seconds)}
+                  tone="slate"
+                />
+                <DetailStat
+                  icon={<Gauge className="h-4 w-4" />}
+                  label="Avg Pace"
+                  value={`${formatPace(selected.avg_pace_s_per_500m)} /500m`}
+                  tone="ember"
+                />
+                <DetailStat
+                  icon={<Activity className="h-4 w-4" />}
+                  label="Stroke Rate"
+                  value={`${formatNum(selected.avg_stroke_rate, 1)} spm`}
+                  tone="ember"
+                />
+                <DetailStat
+                  icon={<Zap className="h-4 w-4" />}
+                  label="Avg Power"
+                  value={`${formatNum(selected.avg_power_watts)} W`}
+                  tone="teal"
+                />
+                <DetailStat
+                  icon={<Flame className="h-4 w-4" />}
+                  label="Calories"
+                  value={`${selected.calories}`}
+                  tone="ember"
+                />
+                <DetailStat
+                  icon={<Heart className="h-4 w-4" />}
+                  label="Avg / Max HR"
+                  value={
+                    selected.avg_heart_rate != null
+                      ? `${selected.avg_heart_rate} / ${selected.max_heart_rate ?? "-"} bpm`
+                      : "-"
+                  }
+                  tone="rose"
+                />
+              </div>
+
+              <div className="relative z-10 mt-4 flex gap-2">
                 {(selected.strava_upload_status === "PENDING" ||
                   selected.strava_upload_status === "FAILED" ||
                   selected.strava_upload_status === "SKIPPED") && (
-                  <Button
-                    className="flex-1"
-                    onClick={() => handleUpload(selected.id)}
-                  >
+                  <Button className="flex-1" onClick={() => handleUpload(selected.id)}>
                     {selected.strava_upload_status === "FAILED" ? (
-                      <RefreshCw className="h-4 w-4 mr-2" />
+                      <RefreshCw className="mr-2 h-4 w-4" />
                     ) : (
-                      <Upload className="h-4 w-4 mr-2" />
+                      <Upload className="mr-2 h-4 w-4" />
                     )}
                     {selected.strava_upload_status === "FAILED"
                       ? "Retry Upload"
@@ -242,11 +310,11 @@ export function WorkoutHistory({ visible }: WorkoutHistoryProps) {
                       onClick={() =>
                         window.open(
                           `https://www.strava.com/activities/${selected.strava_activity_id}`,
-                          "_blank"
+                          "_blank",
                         )
                       }
                     >
-                      <ExternalLink className="h-4 w-4 mr-2" />
+                      <ExternalLink className="mr-2 h-4 w-4" />
                       View on Strava
                     </Button>
                   )}
@@ -259,13 +327,12 @@ export function WorkoutHistory({ visible }: WorkoutHistoryProps) {
                 </Button>
               </div>
 
-              {/* Explicit close — much clearer than the tiny X icon */}
               <Button
-                variant="secondary"
-                className="w-full mt-3 h-12"
+                variant="ghost"
+                className="relative z-10 mt-3 h-12 w-full rounded-2xl border border-border/80 bg-card/55"
                 onClick={() => setSelected(null)}
               >
-                <X className="h-4 w-4 mr-2" />
+                <X className="mr-2 h-4 w-4" />
                 Done
               </Button>
             </>
