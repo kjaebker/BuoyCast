@@ -315,3 +315,64 @@ class TestWebSocket:
                 msg = ws.receive_json(mode="text")
                 assert msg["type"] == "workout_started"
                 assert msg["data"]["new_state"] == "ACTIVE"
+
+
+# --- Recovery endpoint ---
+
+
+class TestRecovery:
+    async def test_recovery_returns_null_when_no_incomplete(self, client):
+        """GET /api/recovery returns null when all workouts are complete."""
+        resp = await client.get("/api/recovery")
+        assert resp.status_code == 200
+        assert resp.json() == {"workout": None}
+
+    async def test_recovery_returns_incomplete_workout(self, client, db):
+        """GET /api/recovery returns the incomplete workout."""
+        workout = _sample_workout("w-incomplete", ended=False)
+        await insert_workout(db, workout)
+
+        resp = await client.get("/api/recovery")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["workout"] is not None
+        assert data["workout"]["id"] == "w-incomplete"
+        assert data["workout"]["ended_at"] is None
+
+    async def test_recovery_ignores_completed_workouts(self, client, db):
+        """GET /api/recovery returns null when only completed workouts exist."""
+        workout = _sample_workout("w-done", ended=True)
+        await insert_workout(db, workout)
+
+        resp = await client.get("/api/recovery")
+        assert resp.status_code == 200
+        assert resp.json() == {"workout": None}
+
+    async def test_discard_sets_ended_at_and_skipped(self, client, db):
+        """POST /api/recovery/{id}/discard closes the workout as SKIPPED."""
+        workout = _sample_workout("w-orphan", ended=False)
+        await insert_workout(db, workout)
+
+        resp = await client.post("/api/recovery/w-orphan/discard")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "discarded"
+
+        updated = await get_workout(db, "w-orphan")
+        assert updated is not None
+        assert updated.ended_at is not None
+        assert updated.strava_upload_status == StravaUploadStatus.SKIPPED
+
+    async def test_discard_404_for_unknown_id(self, client):
+        """POST /api/recovery/{id}/discard returns 404 for unknown workout."""
+        resp = await client.post("/api/recovery/nonexistent/discard")
+        assert resp.status_code == 404
+
+    async def test_recovery_absent_after_discard(self, client, db):
+        """After discard, GET /api/recovery returns null."""
+        workout = _sample_workout("w-gone", ended=False)
+        await insert_workout(db, workout)
+
+        await client.post("/api/recovery/w-gone/discard")
+
+        resp = await client.get("/api/recovery")
+        assert resp.json() == {"workout": None}

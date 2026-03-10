@@ -5,9 +5,10 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from src.models import WorkoutState
+from src.models import StravaUploadStatus, WorkoutState
 from src.storage.queries import (
     delete_workout,
+    get_incomplete_workout,
     get_strokes,
     get_workout,
     list_workouts,
@@ -137,9 +138,36 @@ async def skip_workout(request: Request, workout_id: str):
     workout = await get_workout(state.db, workout_id)
     if workout is None:
         return JSONResponse(status_code=404, content={"detail": "Workout not found"})
-    from src.models import StravaUploadStatus
-
     await update_workout(
         state.db, workout_id, strava_upload_status=StravaUploadStatus.SKIPPED
     )
     return {"status": "skipped", "workout_id": workout_id}
+
+
+# --- Boot-time recovery ---
+
+
+@router.get("/recovery")
+async def get_recovery_workout(request: Request):
+    """Return any incomplete workout (started but never ended) for recovery prompt."""
+    state = _get_state(request)
+    workout = await get_incomplete_workout(state.db)
+    return {"workout": workout.model_dump(mode="json") if workout else None}
+
+
+@router.post("/recovery/{workout_id}/discard")
+async def discard_recovery_workout(request: Request, workout_id: str):
+    """Discard an incomplete workout — sets ended_at and marks SKIPPED."""
+    from datetime import datetime, timezone
+
+    state = _get_state(request)
+    workout = await get_workout(state.db, workout_id)
+    if workout is None:
+        return JSONResponse(status_code=404, content={"detail": "Workout not found"})
+    await update_workout(
+        state.db,
+        workout_id,
+        ended_at=datetime.now(timezone.utc),
+        strava_upload_status=StravaUploadStatus.SKIPPED,
+    )
+    return {"status": "discarded", "workout_id": workout_id}

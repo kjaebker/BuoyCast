@@ -7,11 +7,13 @@ import { LiveMetrics } from "@/components/LiveMetrics";
 import { WorkoutControls } from "@/components/WorkoutControls";
 import { CompletionScreen } from "@/components/CompletionScreen";
 import { WorkoutHistory } from "@/components/WorkoutHistory";
+import { RecoveryBanner } from "@/components/RecoveryBanner";
 import { Button } from "@/components/ui/button";
 
 function App() {
   const { metrics, workoutState, connectionStatus } = useWorkoutSocket();
   const [showHistory, setShowHistory] = useState(false);
+  const [historyKey, setHistoryKey] = useState(0);
 
   useWakeLock(workoutState);
 
@@ -46,10 +48,17 @@ function App() {
               Live
             </Button>
           </div>
-          <WorkoutHistory visible />
+          <WorkoutHistory key={historyKey} visible />
         </>
       ) : (
         <>
+          {/* Boot-time recovery prompt — only when IDLE */}
+          {workoutState === "IDLE" && (
+            <RecoveryBanner
+              onDiscard={() => setHistoryKey((k) => k + 1)}
+            />
+          )}
+
           <LiveMetrics metrics={metrics} workoutState={workoutState} />
 
           {/* History toggle — only when IDLE */}
