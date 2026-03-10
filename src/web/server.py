@@ -7,11 +7,13 @@ import logging
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.requests import Request
 
 from src.events import EventBus, EventType
@@ -101,6 +103,11 @@ def create_app(
     app.include_router(workouts_router, prefix="/api")
     app.include_router(strava_router, prefix="/api")
 
+    # Static file serving for the dashboard SPA
+    _dist = Path(__file__).parent.parent.parent / "dashboard" / "dist"
+    if _dist.exists():
+        app.mount("/assets", StaticFiles(directory=_dist / "assets"), name="assets")
+
     # Status endpoint
     @app.get("/api/status")
     async def get_status():
@@ -135,6 +142,16 @@ def create_app(
                 "WebSocket client disconnected (%d remaining)",
                 len(app_state.ws_clients),
             )
+
+    # SPA catch-all: serve index.html for any non-API, non-asset path
+    if _dist.exists():
+
+        @app.get("/{full_path:path}")
+        async def serve_spa(full_path: str):
+            file_path = _dist / full_path
+            if file_path.exists() and file_path.is_file():
+                return FileResponse(file_path)
+            return FileResponse(_dist / "index.html")
 
     return app
 
