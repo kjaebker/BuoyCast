@@ -43,6 +43,12 @@ class StorageSettings(BaseModel):
     fit_dir: str = "data/fit"
 
 
+class LoggingSettings(BaseModel):
+    level: str = "INFO"
+    log_dir: str = "logs"
+    json_logs: bool = False
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         toml_file="config.toml",
@@ -57,6 +63,7 @@ class Settings(BaseSettings):
     workout: WorkoutSettings = WorkoutSettings()
     strava: StravaSettings = StravaSettings()
     storage: StorageSettings = StorageSettings()
+    logging: LoggingSettings = LoggingSettings()
 
     @classmethod
     def settings_customise_sources(

@@ -147,7 +147,7 @@ Before starting any task, set its status to `in_progress`. Mark `done` when comp
 |---|---|---|
 | 11.1 | Boot-time recovery — detect incomplete workout on startup, surface prompt in dashboard, discard → SKIPPED | done |
 | 11.2 | Performance profiling — CPU < 50% avg, RAM < 200MB, no blocking asyncio calls, BLE stable at ~1Hz under load | done |
-| 11.3 | Structured logging — structlog setup, log levels per convention, rotating file handler (`src/`) | available |
+| 11.3 | Structured logging — structlog setup, log levels per convention, rotating file handler (`src/`) | done |
 | 11.4 | Final test pass — full pytest suite on Pi hardware, 10-min manual workout with Peloton + TICKR + Strava upload | available |
 
 **Phase 11 exit criteria:** Full `pytest` suite passes on Pi. Manual 10-minute workout verified end-to-end.

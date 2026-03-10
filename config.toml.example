@@ -27,3 +27,8 @@ client_secret = ""
 [storage]
 db_path = "data/buoycast.db"
 fit_dir = "data/fit"
+
+[logging]
+level = "INFO"                 # DEBUG | INFO | WARNING | ERROR
+log_dir = "logs"               # rotating log files written here; "" to disable
+json_logs = false              # true = one JSON object per line (for log aggregators)

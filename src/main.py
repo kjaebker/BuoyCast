@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import sys
 from pathlib import Path
 
 import uvicorn
@@ -19,6 +18,7 @@ import uvicorn
 from src.ble.ftms import FTMSBroadcaster
 from src.config import Settings, load_settings
 from src.events import EventBus
+from src.logging_config import configure_logging
 from src.merger import DataMerger
 from src.storage.db import Database
 from src.strava.auth import StravaAuth
@@ -27,16 +27,6 @@ from src.workout.recorder import StrokeRecorder
 from src.workout.state import WorkoutStateMachine
 
 logger = logging.getLogger(__name__)
-
-
-def setup_logging() -> None:
-    """Configure root logging with a sensible default."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)-8s %(name)s  %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-        stream=sys.stderr,
-    )
 
 
 async def run(settings: Settings) -> None:
@@ -147,14 +137,17 @@ async def run(settings: Settings) -> None:
 
 def main() -> None:
     """CLI entry point."""
-    setup_logging()
-
     config_path = Path("config.toml")
     if not config_path.exists():
         logger.error("config.toml not found — copy config.toml.example and edit it")
         sys.exit(1)
 
     settings = load_settings(config_path)
+    configure_logging(
+        level=settings.logging.level,
+        log_dir=settings.logging.log_dir,
+        json_logs=settings.logging.json_logs,
+    )
     asyncio.run(run(settings))
 
 
