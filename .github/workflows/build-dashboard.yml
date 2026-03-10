@@ -3,6 +3,8 @@ name: Build Dashboard
 # Builds the Vite dashboard on proper hardware (not Pi Zero 2W) and commits
 # the compiled dist/ back to the branch so the Pi only needs `git pull`.
 on:
+  workflow_dispatch: # Allow manual trigger from GitHub Actions UI
+
   push:
     branches: [main]
     paths:
