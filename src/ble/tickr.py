@@ -198,7 +198,7 @@ class TickrReader:
             await self._bus.emit(EventType.TICKR_DISCONNECTED)
             logger.info("TICKR disconnected")
 
-    async def _on_hr_notification(self, data: bytearray) -> None:
+    async def _on_hr_notification(self, characteristic: object, data: bytearray) -> None:
         """Handle incoming HR measurement notification."""
         try:
             bpm, rr_intervals = parse_hr_measurement(data)
