@@ -103,6 +103,17 @@ else
     echo ""
 fi
 
+# ── Remove legacy waterrower service if present ───────────────────────
+if systemctl list-unit-files waterrower.service &>/dev/null && \
+   systemctl list-unit-files waterrower.service | grep -q waterrower; then
+    warn "Found legacy 'waterrower' service — removing it..."
+    systemctl stop waterrower.service 2>/dev/null || true
+    systemctl disable waterrower.service 2>/dev/null || true
+    rm -f /etc/systemd/system/waterrower.service
+    systemctl daemon-reload
+    info "Legacy waterrower service removed"
+fi
+
 # ── systemd service ──────────────────────────────────────────────────
 info "Installing systemd service..."
 cp "$INSTALL_DIR/buoycast.service" /etc/systemd/system/${SERVICE_NAME}.service
