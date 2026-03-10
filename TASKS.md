@@ -157,6 +157,7 @@ Before starting any task, set its status to `in_progress`. Mark `done` when comp
 | 11.10 | Dashboard polish — fix portal dark-mode inheritance and modal height constraints (dashboard/src/components/ui/sheet.tsx) | done |
 | 11.11 | Dashboard polish — soften harsh top glow transitions in dashboard shells (dashboard/src/App.tsx, dashboard/src/components/ui/sheet.tsx) | done |
 | 11.12 | Dashboard polish — remove non-functional modal close icon (dashboard/src/components/ui/sheet.tsx) | in_progress |
+| 11.13 | Fix Vite OOM on Pi Zero 2W — add manualChunks to vite.config.ts and cap Node heap in install.sh | done |
 
 **Phase 11 exit criteria:** Full `pytest` suite passes on Pi. Manual 10-minute workout verified end-to-end.
 
