@@ -1,17 +1,10 @@
-/**
- * StatusBar — S4 + TICKR connection status, Strava auth, HR preview.
+﻿/**
+ * StatusBar - S4 + TICKR connection status, Strava auth, HR preview.
  * Responsive: collapses to icons on iPhone.
  */
 
 import { useEffect, useState } from "react";
-import {
-  Wifi,
-  WifiOff,
-  Heart,
-  HeartOff,
-  Upload,
-  UploadCloud,
-} from "lucide-react";
+import { Wifi, WifiOff, Heart, HeartOff, Upload, UploadCloud } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getStravaStatus } from "@/lib/api";
 import type { StravaStatus } from "@/types";
@@ -21,6 +14,31 @@ type StatusBarProps = {
   connectionStatus: WorkoutSocketState["connectionStatus"];
   metrics: WorkoutSocketState["metrics"];
 };
+
+type PillProps = {
+  active: boolean;
+  activeClassName: string;
+  inactiveClassName: string;
+  icon: React.ReactNode;
+  label: string;
+};
+
+function StatusPill({ active, activeClassName, inactiveClassName, icon, label }: PillProps) {
+  return (
+    <div
+      className={cn(
+        "inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em]",
+        active ? activeClassName : inactiveClassName,
+      )}
+    >
+      {icon}
+      {active && (
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current opacity-90" />
+      )}
+      <span className="hidden sm:inline">{label}</span>
+    </div>
+  );
+}
 
 export function StatusBar({ connectionStatus, metrics }: StatusBarProps) {
   const [strava, setStrava] = useState<StravaStatus | null>(null);
@@ -35,52 +53,33 @@ export function StatusBar({ connectionStatus, metrics }: StatusBarProps) {
   const hrValue = metrics?.heart_rate_bpm;
 
   return (
-    <div className="flex items-center gap-3 px-4 py-2 border-b border-border bg-card text-card-foreground">
-      {/* S4 status */}
-      <div
-        className={cn(
-          "flex items-center gap-1.5 text-sm",
-          s4Connected ? "text-green-500" : "text-red-500"
-        )}
-      >
-        {s4Connected ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
-        <span className="hidden sm:inline">S4</span>
-      </div>
+    <div className="sticky top-0 z-10 border-b border-border/70 bg-[color-mix(in_oklch,var(--color-card)_82%,transparent)] px-4 py-3 backdrop-blur-xl">
+      <div className="flex items-center gap-2.5 overflow-x-auto">
+        <StatusPill
+          active={s4Connected}
+          activeClassName="border-[color-mix(in_oklch,var(--color-secondary)_45%,transparent)] bg-[color-mix(in_oklch,var(--color-secondary)_18%,transparent)] text-secondary-foreground"
+          inactiveClassName="border-border bg-card/70 text-muted-foreground"
+          icon={s4Connected ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
+          label={s4Connected ? "S4 live" : "S4 offline"}
+        />
 
-      {/* TICKR / HR status */}
-      <div
-        className={cn(
-          "flex items-center gap-1.5 text-sm",
-          hrValue != null ? "text-red-400" : "text-muted-foreground"
-        )}
-      >
-        {hrValue != null ? (
-          <Heart className="h-4 w-4 fill-current" />
-        ) : (
-          <HeartOff className="h-4 w-4" />
-        )}
-        <span className="hidden sm:inline">
-          {hrValue != null ? `${hrValue} bpm` : "–"}
-        </span>
-      </div>
+        <StatusPill
+          active={hrValue != null}
+          activeClassName="border-[color-mix(in_oklch,var(--color-destructive)_38%,transparent)] bg-[color-mix(in_oklch,var(--color-destructive)_16%,transparent)] text-[color-mix(in_oklch,var(--color-destructive)_82%,white)]"
+          inactiveClassName="border-border bg-card/70 text-muted-foreground"
+          icon={hrValue != null ? <Heart className="h-3.5 w-3.5 fill-current" /> : <HeartOff className="h-3.5 w-3.5" />}
+          label={hrValue != null ? `${hrValue} bpm` : "HR waiting"}
+        />
 
-      <div className="flex-1" />
-
-      {/* Strava status */}
-      <div
-        className={cn(
-          "flex items-center gap-1.5 text-sm",
-          strava?.connected ? "text-orange-500" : "text-muted-foreground"
-        )}
-      >
-        {strava?.connected ? (
-          <UploadCloud className="h-4 w-4" />
-        ) : (
-          <Upload className="h-4 w-4" />
-        )}
-        <span className="hidden sm:inline">
-          {strava?.connected ? "Strava" : "No Strava"}
-        </span>
+        <div className="ml-auto">
+          <StatusPill
+            active={Boolean(strava?.connected)}
+            activeClassName="border-[color-mix(in_oklch,var(--color-primary)_40%,transparent)] bg-[color-mix(in_oklch,var(--color-primary)_18%,transparent)] text-primary"
+            inactiveClassName="border-border bg-card/70 text-muted-foreground"
+            icon={strava?.connected ? <UploadCloud className="h-3.5 w-3.5" /> : <Upload className="h-3.5 w-3.5" />}
+            label={strava?.connected ? "Strava ready" : "No Strava"}
+          />
+        </div>
       </div>
     </div>
   );

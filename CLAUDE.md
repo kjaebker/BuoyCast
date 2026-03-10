@@ -145,3 +145,30 @@ tests/
 ## Target Hardware
 
 Raspberry Pi Zero 2W — constrained: < 50% CPU, < 200MB RAM during an active workout.
+
+---
+
+## Design Context
+
+### Users
+- Primary users are individual WaterRower owners using BuoyCast during live indoor rowing workouts.
+- The interface is usually viewed on an iPhone or iPad at arm's length while the user is exercising, moving, and only able to glance briefly between strokes.
+- The main job to be done is to make workout status, key rowing metrics, and follow-up actions feel immediate and effortless without distracting from the workout itself.
+
+### Brand Personality
+- Fun, engaging, clear.
+- The product should feel energetic and motivating like a fitness companion, while still being dependable enough for an always-on hardware bridge.
+- The interface should reinforce confidence during active workouts and make post-workout actions feel rewarding instead of administrative.
+
+### Aesthetic Direction
+- Dark mode only.
+- Visual references: Zwift, Strava, Apple Fitness.
+- Favor high-contrast, athletic, modern presentation with strong live-data emphasis, crisp hierarchy, and polished motion.
+- Avoid default-looking shadcn/Tailwind aesthetics, generic admin-dashboard styling, or anything that feels dull, clinical, or overbuilt for a focused workout flow.
+
+### Design Principles
+- Optimize for glanceability first: critical workout data should be readable in under a second on a moving body at arm's length.
+- Make the experience feel active and motivating: use bold hierarchy, purposeful color, and moments of energy without sacrificing clarity.
+- Keep interactions frictionless under physical strain: large touch targets, obvious states, and minimal decision overhead.
+- Preserve trust through restraint: reliability and status clarity matter more than decorative complexity.
+- Design mobile-first for the workout moment, then expand to richer tablet layouts without weakening the fast live-use path.

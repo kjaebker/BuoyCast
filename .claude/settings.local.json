@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/ -v)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/unit/test_tickr_parser.py tests/integration/test_tickr_reader.py tests/unit/test_merger.py -v)"
+    ]
+  }
+}

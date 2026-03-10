@@ -1,5 +1,5 @@
-/**
- * RecoveryBanner — shown on startup when an incomplete workout is detected.
+﻿/**
+ * RecoveryBanner - shown on startup when an incomplete workout is detected.
  * Lets the user discard (mark SKIPPED) the orphaned workout.
  */
 
@@ -16,9 +16,7 @@ type Props = {
 };
 
 export function RecoveryBanner({ onDiscard }: Props) {
-  const [workout, setWorkout] = useState<WorkoutRecord | null | undefined>(
-    undefined,
-  );
+  const [workout, setWorkout] = useState<WorkoutRecord | null | undefined>(undefined);
   const [discarding, setDiscarding] = useState(false);
 
   useEffect(() => {
@@ -50,27 +48,28 @@ export function RecoveryBanner({ onDiscard }: Props) {
 
   return (
     <div
-      className="flex items-start gap-3 bg-amber-500/10 border border-amber-500/30 rounded-lg mx-4 mt-3 p-4"
+      className="mx-4 mt-3 flex items-start gap-3 rounded-[1.5rem] border border-[color-mix(in_oklch,var(--color-primary)_30%,transparent)] bg-[linear-gradient(135deg,color-mix(in_oklch,var(--color-primary)_18%,var(--color-card))_0%,color-mix(in_oklch,var(--color-secondary)_12%,var(--color-card))_100%)] p-4 shadow-[0_18px_40px_-32px_rgba(0,0,0,0.95)]"
       role="alert"
     >
-      <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-amber-300">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[color-mix(in_oklch,var(--color-primary)_20%,transparent)] text-primary">
+        <AlertTriangle className="h-5 w-5" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold text-foreground">
           Unfinished workout from {startedAt}
         </p>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          {formatDistance(workout.total_distance_m)}m ·{" "}
-          {formatTime(workout.elapsed_seconds)} · {workout.total_strokes} strokes
+        <p className="mt-1 text-xs text-muted-foreground">
+          {formatDistance(workout.total_distance_m)}m · {formatTime(workout.elapsed_seconds)} · {workout.total_strokes} strokes
         </p>
       </div>
       <Button
         variant="outline"
         size="sm"
-        className="shrink-0 border-amber-500/40 text-amber-300 hover:bg-amber-500/10 min-h-[2.5rem]"
+        className="min-h-[2.5rem] shrink-0 rounded-xl border-[color-mix(in_oklch,var(--color-primary)_34%,transparent)] bg-[color-mix(in_oklch,var(--color-primary)_12%,transparent)] text-primary hover:bg-[color-mix(in_oklch,var(--color-primary)_18%,transparent)]"
         onClick={handleDiscard}
         disabled={discarding}
       >
-        {discarding ? "Discarding…" : "Discard"}
+        {discarding ? "Discarding..." : "Discard"}
       </Button>
     </div>
   );
