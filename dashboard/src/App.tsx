@@ -11,14 +11,14 @@ import { RecoveryBanner } from "@/components/RecoveryBanner";
 import { Button } from "@/components/ui/button";
 
 function App() {
-  const { metrics, workoutState, connectionStatus } = useWorkoutSocket();
+  const { metrics, workoutState, connectionStatus, dismissSummary } = useWorkoutSocket();
   const [showHistory, setShowHistory] = useState(false);
   const [historyKey, setHistoryKey] = useState(0);
 
   useWakeLock(workoutState);
 
   const handleDismissCompletion = () => {
-    // After dismissing completion screen, show history
+    dismissSummary();
     setShowHistory(true);
   };
 

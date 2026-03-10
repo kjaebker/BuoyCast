@@ -18,6 +18,7 @@ export type WorkoutSocketState = {
   metrics: RowingMetrics | null;
   workoutState: WorkoutState;
   connectionStatus: ConnectionStatus;
+  dismissSummary: () => void;
 };
 
 export function useWorkoutSocket(url?: string): WorkoutSocketState {
@@ -37,9 +38,10 @@ export function useWorkoutSocket(url?: string): WorkoutSocketState {
 
   const connect = useCallback(() => {
     if (!mountedRef.current) return;
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+    const rs = wsRef.current?.readyState;
+    if (rs === WebSocket.OPEN || rs === WebSocket.CONNECTING) return;
 
-    // Clean up existing
+    // Clean up existing closed/closing socket
     if (wsRef.current) {
       wsRef.current.onclose = null;
       wsRef.current.close();
@@ -133,5 +135,10 @@ export function useWorkoutSocket(url?: string): WorkoutSocketState {
       document.removeEventListener("visibilitychange", handleVisibility);
   }, [connect]);
 
-  return { metrics, workoutState, connectionStatus };
+  const dismissSummary = useCallback(() => {
+    setWorkoutState("IDLE");
+    setMetrics(null);
+  }, []);
+
+  return { metrics, workoutState, connectionStatus, dismissSummary };
 }
