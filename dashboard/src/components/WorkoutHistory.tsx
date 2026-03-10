@@ -14,6 +14,7 @@ import {
   RefreshCw,
   ExternalLink,
   Trash2,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -145,60 +146,80 @@ export function WorkoutHistory({ visible }: WorkoutHistoryProps) {
         <SheetContent side="bottom">
           {selected && (
             <>
+              {/* Drag-handle hint */}
+              <div className="flex justify-center pb-2 -mt-2">
+                <div className="w-10 h-1 rounded-full bg-muted-foreground/30" />
+              </div>
+
               <SheetHeader>
                 <SheetTitle>
                   {new Date(selected.started_at).toLocaleDateString(undefined, {
                     weekday: "long",
                     month: "long",
                     day: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
                   })}
                 </SheetTitle>
               </SheetHeader>
+
               <div className="py-4 space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Duration</span>
-                  <span className="font-medium">
+                  <span className="font-medium tabular-nums">
                     {formatTime(selected.elapsed_seconds)}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Distance</span>
-                  <span className="font-medium">
+                  <span className="font-medium tabular-nums">
                     {formatDistance(selected.total_distance_m)} m
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Avg Pace</span>
-                  <span className="font-medium">
+                  <span className="font-medium tabular-nums">
                     {formatPace(selected.avg_pace_s_per_500m)} /500m
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Strokes</span>
-                  <span className="font-medium">{selected.total_strokes}</span>
+                  <span className="font-medium tabular-nums">
+                    {selected.total_strokes}
+                  </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Avg SR</span>
-                  <span className="font-medium">
+                  <span className="text-muted-foreground">Avg Stroke Rate</span>
+                  <span className="font-medium tabular-nums">
                     {formatNum(selected.avg_stroke_rate, 1)} spm
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Calories</span>
-                  <span className="font-medium">{selected.calories}</span>
+                  <span className="text-muted-foreground">Avg Power</span>
+                  <span className="font-medium tabular-nums">
+                    {formatNum(selected.avg_power_watts)} W
+                  </span>
                 </div>
-                {selected.avg_heart_rate != null && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Avg HR</span>
-                    <span className="font-medium">
-                      {selected.avg_heart_rate} bpm
-                    </span>
-                  </div>
-                )}
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Calories</span>
+                  <span className="font-medium tabular-nums">
+                    {selected.calories}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Avg / Max HR</span>
+                  <span className="font-medium tabular-nums">
+                    {selected.avg_heart_rate != null
+                      ? `${selected.avg_heart_rate} / ${selected.max_heart_rate ?? "–"} bpm`
+                      : "–"}
+                  </span>
+                </div>
               </div>
+
               <div className="flex gap-2 pt-2">
                 {(selected.strava_upload_status === "PENDING" ||
-                  selected.strava_upload_status === "FAILED") && (
+                  selected.strava_upload_status === "FAILED" ||
+                  selected.strava_upload_status === "SKIPPED") && (
                   <Button
                     className="flex-1"
                     onClick={() => handleUpload(selected.id)}
@@ -209,14 +230,14 @@ export function WorkoutHistory({ visible }: WorkoutHistoryProps) {
                       <Upload className="h-4 w-4 mr-2" />
                     )}
                     {selected.strava_upload_status === "FAILED"
-                      ? "Retry"
-                      : "Upload"}
+                      ? "Retry Upload"
+                      : "Upload to Strava"}
                   </Button>
                 )}
                 {selected.strava_upload_status === "UPLOADED" &&
                   selected.strava_activity_id && (
                     <Button
-                      variant="outline"
+                      variant="secondary"
                       className="flex-1"
                       onClick={() =>
                         window.open(
@@ -237,6 +258,16 @@ export function WorkoutHistory({ visible }: WorkoutHistoryProps) {
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
+
+              {/* Explicit close — much clearer than the tiny X icon */}
+              <Button
+                variant="secondary"
+                className="w-full mt-3 h-12"
+                onClick={() => setSelected(null)}
+              >
+                <X className="h-4 w-4 mr-2" />
+                Done
+              </Button>
             </>
           )}
         </SheetContent>
