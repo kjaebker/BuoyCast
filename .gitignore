@@ -182,7 +182,7 @@ cython_debug/
 
 # Dashboard
 dashboard/node_modules/
-dashboard/dist/
+# dashboard/dist/ is intentionally tracked — built by GitHub Actions, pulled by Pi
 !dashboard/src/lib/
 
 # BuoyCast
