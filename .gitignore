@@ -183,6 +183,7 @@ cython_debug/
 # Dashboard
 dashboard/node_modules/
 dashboard/dist/
+!dashboard/src/lib/
 
 # BuoyCast
 config.toml
