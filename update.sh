@@ -21,14 +21,14 @@ info "Pulling latest code (includes pre-built dashboard)..."
 
 if [[ -d "$INSTALL_DIR/.git" ]]; then
     # INSTALL_DIR is itself a git repo — pull directly
-    git -C "$INSTALL_DIR" pull origin main
+    sudo -u pi git -C "$INSTALL_DIR" pull origin main
 
 elif [[ -f "$INSTALL_DIR/.source_dir" ]]; then
     # install.sh recorded where it copied files from — pull there, then re-sync
     SOURCE_DIR=$(cat "$INSTALL_DIR/.source_dir")
     if [[ -d "$SOURCE_DIR/.git" ]]; then
         info "Pulling into source repo at $SOURCE_DIR..."
-        git -C "$SOURCE_DIR" pull origin main
+        sudo -u pi git -C "$SOURCE_DIR" pull origin main
         info "Syncing updated files to $INSTALL_DIR..."
         rsync -a --delete \
             --exclude='.git' \
