@@ -133,7 +133,7 @@ Before starting any task, set its status to `in_progress`. Mark `done` when comp
 | ID | Task | Status |
 |---|---|---|
 | 10.1 | Install script â€” system deps, venv, dashboard build, config.toml template, systemd service, Avahi mDNS, post-install checklist (`install.sh`) | done |
-| 10.2 | systemd service â€” Restart=always, After=bluetooth.target, journald logging (`waterrower.service`) | done |
+| 10.2 | systemd service â€” Restart=always, After=bluetooth.target, journald logging (`buoycast.service`) | done |
 | 10.3 | Headless Pi OS setup docs â€” Imager settings, SSH, install script, Strava OAuth, TICKR MAC, verify with curl | done |
 | 10.4 | Hardware verification checklist â€” USB OTG â†’ S4 beep, TICKR auto-connect, FTMS visible to Peloton | done |
 
@@ -159,6 +159,7 @@ Before starting any task, set its status to `in_progress`. Mark `done` when comp
 | 11.12 | Dashboard polish — remove non-functional modal close icon (dashboard/src/components/ui/sheet.tsx) | in_progress |
 | 11.13 | Fix Vite OOM on Pi Zero 2W — add manualChunks to vite.config.ts and cap Node heap in install.sh | done |
 | 11.14 | Move dashboard build to GitHub Actions — dashboard/dist tracked in repo, Pi just does git pull, Node.js removed from install.sh, update.sh added | done |
+| 11.15 | Fix install/update scripts — rename all waterrower → buoycast (SERVICE_NAME, hostname, service file), fix update.sh git pull failure when INSTALL_DIR is not a git repo (store source dir during install, rsync on update), add config.toml already-exists notice | done |
 
 **Phase 11 exit criteria:** Full `pytest` suite passes on Pi. Manual 10-minute workout verified end-to-end.
 

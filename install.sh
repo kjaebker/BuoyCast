@@ -4,7 +4,7 @@
 set -euo pipefail
 
 INSTALL_DIR="/opt/buoycast"
-SERVICE_NAME="waterrower"
+SERVICE_NAME="buoycast"
 SERVICE_USER="pi"
 
 # Colors for output
@@ -50,6 +50,9 @@ if [[ "$SCRIPT_DIR" != "$INSTALL_DIR" ]]; then
         --exclude='data/' \
         --exclude='__pycache__' \
         "$SCRIPT_DIR/" "$INSTALL_DIR/"
+
+    # Store the source directory so update.sh can pull from it later
+    echo "$SCRIPT_DIR" > "$INSTALL_DIR/.source_dir"
 fi
 
 # Create data directories
@@ -85,14 +88,35 @@ fi
 if [[ ! -f "$INSTALL_DIR/config.toml" ]]; then
     cp "$INSTALL_DIR/config.toml.example" "$INSTALL_DIR/config.toml"
     chown "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR/config.toml"
-    warn "Created config.toml from template — edit it before starting"
+    warn "Created config.toml from template — edit it before starting the service"
 else
-    info "config.toml already exists, not overwriting"
+    echo ""
+    echo "=========================================="
+    echo "  [NOTICE] config.toml already exists"
+    echo "=========================================="
+    echo "  Your existing config was NOT overwritten."
+    echo "  To review the latest available options:"
+    echo "    diff $INSTALL_DIR/config.toml $INSTALL_DIR/config.toml.example"
+    echo "  To edit your config:"
+    echo "    nano $INSTALL_DIR/config.toml"
+    echo "=========================================="
+    echo ""
+fi
+
+# ── Remove legacy waterrower service if present ───────────────────────
+if systemctl list-unit-files waterrower.service &>/dev/null && \
+   systemctl list-unit-files waterrower.service | grep -q waterrower; then
+    warn "Found legacy 'waterrower' service — removing it..."
+    systemctl stop waterrower.service 2>/dev/null || true
+    systemctl disable waterrower.service 2>/dev/null || true
+    rm -f /etc/systemd/system/waterrower.service
+    systemctl daemon-reload
+    info "Legacy waterrower service removed"
 fi
 
 # ── systemd service ──────────────────────────────────────────────────
 info "Installing systemd service..."
-cp "$INSTALL_DIR/waterrower.service" /etc/systemd/system/${SERVICE_NAME}.service
+cp "$INSTALL_DIR/buoycast.service" /etc/systemd/system/${SERVICE_NAME}.service
 systemctl daemon-reload
 systemctl enable ${SERVICE_NAME}.service
 
@@ -104,7 +128,7 @@ systemctl enable avahi-daemon
 systemctl start avahi-daemon || true
 
 # Ensure hostname is set for .local resolution
-MDNS_NAME=$(grep -oP 'mdns_name\s*=\s*"\K[^"]+' "$INSTALL_DIR/config.toml" 2>/dev/null || echo "waterrower")
+MDNS_NAME=$(grep -oP 'mdns_name\s*=\s*"\K[^"]+' "$INSTALL_DIR/config.toml" 2>/dev/null || echo "buoycast")
 if [[ "$(hostname)" != "$MDNS_NAME" ]]; then
     warn "Hostname is '$(hostname)', not '$MDNS_NAME'"
     warn "Run: sudo hostnamectl set-hostname $MDNS_NAME"
@@ -129,7 +153,7 @@ echo ""
 echo "     - Set TICKR MAC address:  heart_rate.device_mac"
 echo "     - Set Strava credentials: strava.client_id / client_secret"
 echo ""
-echo "  2. Set hostname (for waterrower.local):"
+echo "  2. Set hostname (for buoycast.local):"
 echo "     sudo hostnamectl set-hostname $MDNS_NAME"
 echo ""
 echo "  3. Start the service:"
