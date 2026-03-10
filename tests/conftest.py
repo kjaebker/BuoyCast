@@ -235,7 +235,7 @@ class MockBLEClient:
 
             data = self._build_hr_data()
             if self._notify_callback is not None:
-                await self._notify_callback(data)
+                await self._notify_callback(None, data)
             self._notification_count += 1
             await asyncio.sleep(self._notify_interval_s)
 
