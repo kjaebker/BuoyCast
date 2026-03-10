@@ -204,9 +204,7 @@ export function WorkoutHistory({ visible }: WorkoutHistoryProps) {
         <SheetContent side="bottom">
           {selected && (
             <>
-              <div className="relative z-10 mx-auto mb-4 h-1.5 w-12 rounded-full bg-muted-foreground/30" />
-
-              <SheetHeader className="relative z-10 mb-4 pr-12">
+              <SheetHeader className="relative z-10 mb-5 pr-12 pt-3 sm:pt-2">
                 <div className="inline-flex w-fit items-center rounded-full border border-[color-mix(in_oklch,var(--color-primary)_28%,transparent)] bg-[color-mix(in_oklch,var(--color-primary)_14%,transparent)] px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-primary">
                   Saved workout
                 </div>
@@ -342,3 +340,5 @@ export function WorkoutHistory({ visible }: WorkoutHistoryProps) {
     </div>
   );
 }
+
+

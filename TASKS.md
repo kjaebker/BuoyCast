@@ -149,8 +149,30 @@ Before starting any task, set its status to `in_progress`. Mark `done` when comp
 | 11.2 | Performance profiling â€” CPU < 50% avg, RAM < 200MB, no blocking asyncio calls, BLE stable at ~1Hz under load | done |
 | 11.3 | Structured logging â€” structlog setup, log levels per convention, rotating file handler (`src/`) | done |
 | 11.4 | Final test pass — full pytest suite on Pi hardware, 10-min manual workout with Peloton + TICKR + Strava upload | available |
-| 11.5 | Dashboard polish — align workout history detail sheet with live dashboard aesthetic (`dashboard/src/components/WorkoutHistory.tsx`, `dashboard/src/components/ui/sheet.tsx`) | done |
+| 11.5 | Dashboard polish — align workout history detail sheet with live dashboard aesthetic (dashboard/src/components/WorkoutHistory.tsx, dashboard/src/components/ui/sheet.tsx) | done |
+| 11.6 | Dashboard polish — center and size workout history detail drawer correctly (dashboard/src/components/ui/sheet.tsx) | done |
+| 11.7 | Dashboard polish — make sheet overlay geometry fully controlled by the app instead of the native dialog box (dashboard/src/components/ui/sheet.tsx) | done |
+| 11.8 | Dashboard polish — treat workout history detail as a centered modal instead of a drawer (dashboard/src/components/ui/sheet.tsx) | done |
+| 11.9 | Dashboard polish — replace native dialog-based sheet with portal overlay panel (dashboard/src/components/ui/sheet.tsx) | done |
+| 11.10 | Dashboard polish — fix portal dark-mode inheritance and modal height constraints (dashboard/src/components/ui/sheet.tsx) | done |
+| 11.11 | Dashboard polish — soften harsh top glow transitions in dashboard shells (dashboard/src/App.tsx, dashboard/src/components/ui/sheet.tsx) | done |
+| 11.12 | Dashboard polish — remove non-functional modal close icon (dashboard/src/components/ui/sheet.tsx) | in_progress |
 
 **Phase 11 exit criteria:** Full `pytest` suite passes on Pi. Manual 10-minute workout verified end-to-end.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 

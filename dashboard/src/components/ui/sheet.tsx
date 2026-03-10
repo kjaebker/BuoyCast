@@ -1,4 +1,5 @@
 ﻿import * as React from "react";
+import { createPortal } from "react-dom";
 import { cva, type VariantProps } from "class-variance-authority";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -15,7 +16,6 @@ type SheetSide = (typeof SHEET_SIDES)[keyof typeof SHEET_SIDES];
 interface SheetContextValue {
   open: boolean;
   setOpen: (open: boolean) => void;
-  dialogRef: React.RefObject<HTMLDialogElement | null>;
   side: SheetSide;
   setSide: (side: SheetSide) => void;
 }
@@ -39,7 +39,6 @@ interface SheetProps {
 function Sheet({ children, open: controlledOpen, onOpenChange }: SheetProps) {
   const [internalOpen, setInternalOpen] = React.useState(false);
   const [side, setSide] = React.useState<SheetSide>("right");
-  const dialogRef = React.useRef<HTMLDialogElement>(null);
 
   const isControlled = controlledOpen !== undefined;
   const open = isControlled ? controlledOpen : internalOpen;
@@ -53,27 +52,26 @@ function Sheet({ children, open: controlledOpen, onOpenChange }: SheetProps) {
   );
 
   React.useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
+    if (!open || typeof document === "undefined") return;
 
-    if (open && !dialog.open) {
-      dialog.showModal();
-    } else if (!open && dialog.open) {
-      dialog.close();
-    }
-  }, [open]);
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    };
 
-  React.useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
 
-    const handleClose = () => setOpen(false);
-    dialog.addEventListener("close", handleClose);
-    return () => dialog.removeEventListener("close", handleClose);
-  }, [setOpen]);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open, setOpen]);
 
   return (
-    <SheetContext.Provider value={{ open, setOpen, dialogRef, side, setSide }}>
+    <SheetContext.Provider value={{ open, setOpen, side, setSide }}>
       {children}
     </SheetContext.Provider>
   );
@@ -98,15 +96,29 @@ const SheetTrigger = React.forwardRef<HTMLButtonElement, SheetTriggerProps>(
 );
 SheetTrigger.displayName = "SheetTrigger";
 
-const sheetVariants = cva(
-  "fixed z-50 gap-4 border border-border/70 bg-[linear-gradient(180deg,color-mix(in_oklch,var(--color-card)_94%,transparent)_0%,color-mix(in_oklch,var(--color-background)_88%,black)_100%)] text-foreground shadow-[0_36px_80px_-32px_rgba(0,0,0,0.95)] transition-transform duration-300 ease-in-out backdrop-blur-xl",
+const sheetPositionVariants = cva("flex h-full w-full p-3 sm:p-4", {
+  variants: {
+    side: {
+      top: "items-start justify-center",
+      right: "items-stretch justify-end",
+      bottom: "items-center justify-center",
+      left: "items-stretch justify-start",
+    },
+  },
+  defaultVariants: {
+    side: "right",
+  },
+});
+
+const sheetPanelVariants = cva(
+  "relative flex w-full flex-col overflow-hidden border border-border/70 bg-[linear-gradient(180deg,color-mix(in_oklch,var(--color-card)_95%,transparent)_0%,color-mix(in_oklch,var(--color-background)_90%,black)_100%)] text-foreground shadow-[0_36px_80px_-32px_rgba(0,0,0,0.95)] backdrop-blur-xl",
   {
     variants: {
       side: {
-        top: "inset-x-0 top-0 m-0 max-h-[80vh] w-full rounded-b-[2rem] border-b",
-        right: "inset-y-0 right-0 m-0 h-full w-3/4 max-w-sm rounded-l-[2rem] border-l",
-        bottom: "inset-x-0 bottom-0 m-0 max-h-[88vh] w-full rounded-t-[2rem] border-t",
-        left: "inset-y-0 left-0 m-0 h-full w-3/4 max-w-sm rounded-r-[2rem] border-r",
+        top: "max-h-[calc(100dvh-1.5rem)] max-w-[46rem] rounded-[2rem]",
+        right: "h-full max-w-[24rem] rounded-[2rem] sm:rounded-l-[2rem] sm:rounded-r-none",
+        bottom: "max-h-[calc(100dvh-1.5rem)] max-w-[42rem] rounded-[2rem]",
+        left: "h-full max-w-[24rem] rounded-[2rem] sm:rounded-l-none sm:rounded-r-[2rem]",
       },
     },
     defaultVariants: {
@@ -116,56 +128,50 @@ const sheetVariants = cva(
 );
 
 interface SheetContentProps
-  extends React.HTMLAttributes<HTMLDialogElement>,
-    VariantProps<typeof sheetVariants> {
+  extends React.HTMLAttributes<HTMLDivElement>,
+    VariantProps<typeof sheetPanelVariants> {
   side?: SheetSide;
 }
 
-const SheetContent = React.forwardRef<HTMLDialogElement, SheetContentProps>(
+const SheetContent = React.forwardRef<HTMLDivElement, SheetContentProps>(
   ({ className, children, side = "right", ...props }, ref) => {
-    const { setOpen, dialogRef, setSide } = useSheetContext();
+    const { open, setOpen, setSide } = useSheetContext();
 
     React.useEffect(() => {
       setSide(side);
     }, [side, setSide]);
 
-    const combinedRef = React.useCallback(
-      (node: HTMLDialogElement | null) => {
-        (dialogRef as React.MutableRefObject<HTMLDialogElement | null>).current = node;
-        if (typeof ref === "function") ref(node);
-        else if (ref) (ref as React.MutableRefObject<HTMLDialogElement | null>).current = node;
-      },
-      [dialogRef, ref],
-    );
+    if (!open || typeof document === "undefined") {
+      return null;
+    }
 
-    const handleBackdropClick = (e: React.MouseEvent<HTMLDialogElement>) => {
-      if (e.target === e.currentTarget) {
-        setOpen(false);
-      }
-    };
-
-    return (
-      <dialog
-        ref={combinedRef}
-        className={cn(
-          sheetVariants({ side }),
-          "overflow-hidden bg-transparent p-0 backdrop:bg-[color-mix(in_oklch,var(--color-background)_42%,black)]",
-          className,
-        )}
-        onClick={handleBackdropClick}
-        {...props}
+    const content = (
+      <div
+        className="dark fixed inset-0 z-50 bg-[color-mix(in_oklch,var(--color-background)_42%,black)]"
+        onClick={() => setOpen(false)}
       >
-        <div className="relative h-full overflow-auto px-5 pb-6 pt-5">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-[radial-gradient(circle_at_top,color-mix(in_oklch,var(--color-primary)_22%,transparent),transparent_70%)] opacity-90" />
-          <div className="pointer-events-none absolute right-0 top-10 h-24 w-24 rounded-full bg-[color-mix(in_oklch,var(--color-secondary)_22%,transparent)] blur-3xl" />
-          {children}
-          <SheetClose className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full border border-border/80 bg-card/70 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring">
-            <X className="h-4 w-4" />
-            <span className="sr-only">Close</span>
-          </SheetClose>
+        <div className={sheetPositionVariants({ side })}>
+          <div
+            ref={ref}
+            className={cn(sheetPanelVariants({ side }), className)}
+            onClick={(event) => event.stopPropagation()}
+            {...props}
+          >
+            <div className="relative flex max-h-[calc(100dvh-1.5rem)] flex-1 flex-col overflow-y-auto px-5 pb-6 pt-6 sm:px-6 sm:pb-7 sm:pt-7">
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-[radial-gradient(ellipse_at_top,color-mix(in_oklch,var(--color-primary)_18%,transparent)_0%,color-mix(in_oklch,var(--color-primary)_10%,transparent)_30%,transparent_78%)] opacity-75 blur-[2px]" />
+              <div className="pointer-events-none absolute right-0 top-10 h-24 w-24 rounded-full bg-[color-mix(in_oklch,var(--color-secondary)_18%,transparent)] blur-3xl" />
+              {children}
+              <SheetClose className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full border border-border/80 bg-card/70 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+                <X className="h-4 w-4" />
+                <span className="sr-only">Close</span>
+              </SheetClose>
+            </div>
+          </div>
         </div>
-      </dialog>
+      </div>
     );
+
+    return createPortal(content, document.body);
   },
 );
 SheetContent.displayName = "SheetContent";
@@ -249,3 +255,4 @@ export {
   SHEET_SIDES,
 };
 export type { SheetSide };
+
