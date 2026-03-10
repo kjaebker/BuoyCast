@@ -51,6 +51,8 @@ fi
 
 # ── Update Python dependencies ────────────────────────────────────────
 info "Updating Python dependencies..."
+# Clean up any stale pip temp dirs (left behind by interrupted/root installs)
+find "$INSTALL_DIR/.venv/lib" -maxdepth 3 -name '~*' -type d -exec rm -rf {} + 2>/dev/null || true
 sudo -u pi "$INSTALL_DIR/.venv/bin/pip" install -e "$INSTALL_DIR" -q
 
 # ── Restart service ───────────────────────────────────────────────────
