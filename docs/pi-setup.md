@@ -28,7 +28,7 @@ Step-by-step guide to flash, configure, and run BuoyCast on a Raspberry Pi Zero 
 
    | Setting | Value |
    |---|---|
-   | Set hostname | `waterrower` |
+   | Set hostname | `bouycast` |
    | Enable SSH | ✅ — Use password authentication |
    | Username | `pi` |
    | Password | choose a strong password |
@@ -49,13 +49,13 @@ Step-by-step guide to flash, configure, and run BuoyCast on a Raspberry Pi Zero 
 3. Find the Pi's IP address — check your router's DHCP leases, or use mDNS:
 
    ```bash
-   ping waterrower.local
+   ping bouycast.local
    ```
 
 4. SSH in:
 
    ```bash
-   ssh pi@waterrower.local
+   ssh pi@bouycast.local
    # or: ssh pi@<IP address>
    ```
 
@@ -68,12 +68,42 @@ Step-by-step guide to flash, configure, and run BuoyCast on a Raspberry Pi Zero 
 
 ---
 
-## 3 — Clone the repo and run the install script
+## 3 — Install git and set up GitHub SSH access
+
+Raspberry Pi OS Lite does not include git by default. Install it first:
+
+```bash
+sudo apt-get install -y git
+```
+
+The repo is private, so you need to authenticate with GitHub via SSH key:
+
+```bash
+# Generate an SSH key on the Pi
+ssh-keygen -t ed25519 -C "bouycast-pi" -f ~/.ssh/id_ed25519 -N ""
+
+# Print the public key
+cat ~/.ssh/id_ed25519.pub
+```
+
+Copy the output, then add it to your GitHub account:
+**github.com → Settings → SSH and GPG keys → New SSH key**
+
+Test the connection:
+
+```bash
+ssh -T git@github.com
+# Should respond: "Hi <username>! You've successfully authenticated..."
+```
+
+---
+
+## 4 — Clone the repo and run the install script
 
 ```bash
 # Clone BuoyCast
-git clone https://github.com/your-org/BuoyCast.git
-cd BuoyCast
+git clone git@github.com:kjaebker/BouyCast.git
+cd BouyCast
 
 # Run the install script as root
 sudo bash install.sh
@@ -84,12 +114,12 @@ The script will:
 - Set up a Python virtualenv in `/opt/buoycast/.venv`
 - Build the React dashboard
 - Copy `config.toml.example` → `/opt/buoycast/config.toml`
-- Install and enable the `waterrower` systemd service
+- Install and enable the `bouycast` systemd service
 - Add `pi` to the `bluetooth` and `dialout` groups
 
 ---
 
-## 4 — Edit config.toml
+## 5 — Edit config.toml
 
 ```bash
 nano /opt/buoycast/config.toml
@@ -99,7 +129,7 @@ Minimum required fields:
 
 ```toml
 [heart_rate]
-device_mac = "A4:34:F1:XX:XX:XX"   # your TICKR MAC — see step 5 below
+device_mac = "A4:34:F1:XX:XX:XX"   # your TICKR MAC — see step 6 below
 
 [strava]
 client_id     = "12345"             # from your Strava API app
@@ -111,13 +141,18 @@ Save with `Ctrl+O`, exit with `Ctrl+X`.
 
 ---
 
-## 5 — Find your TICKR MAC address
+## 6 — Find your TICKR MAC address
 
 If you don't already know the MAC address of your Wahoo TICKR:
 
 ```bash
+# Ensure Bluetooth is unblocked and the controller is powered on
+sudo rfkill unblock bluetooth
+sudo systemctl restart bluetooth
+
 # Start an interactive BLE scan (wear the strap and breathe)
 sudo bluetoothctl
+[bluetooth]# power on
 [bluetooth]# scan on
 ```
 
@@ -138,37 +173,37 @@ Paste it into `config.toml` under `[heart_rate] device_mac`.
 
 ---
 
-## 6 — Strava OAuth (one-time, from a browser)
+## 7 — Strava OAuth (one-time, from a browser)
 
 Strava requires an OAuth authorisation that must be done once from a browser.
 
-### 6a — Create a Strava API app
+### 7a — Create a Strava API app
 
 1. Go to [strava.com/settings/api](https://www.strava.com/settings/api) and create an app.
-2. Set **Authorization Callback Domain** to `waterrower.local`.
+2. Set **Authorization Callback Domain** to `bouycast.local`.
 3. Copy **Client ID** and **Client Secret** into `config.toml`.
 
-### 6b — Start the service temporarily
+### 7b — Start the service temporarily
 
 ```bash
-sudo systemctl start waterrower
+sudo systemctl start bouycast
 ```
 
-### 6c — Authorise from your phone or laptop browser
+### 7c — Authorise from your phone or laptop browser
 
 Open:
 
 ```
-http://waterrower.local:8080/api/strava/auth
+http://bouycast.local:8080/api/strava/auth
 ```
 
 You will be redirected to Strava's consent page. Log in and click **Authorize**.
 The Pi will receive the token and store it in `data/buoycast.db`.
 
-### 6d — Verify the token was saved
+### 7d — Verify the token was saved
 
 ```bash
-curl -s http://waterrower.local:8080/api/strava/status | python3 -m json.tool
+curl -s http://bouycast.local:8080/api/strava/status | python3 -m json.tool
 ```
 
 Expected response:
@@ -182,7 +217,7 @@ Expected response:
 
 ---
 
-## 7 — Reboot and verify
+## 8 — Reboot and verify
 
 ```bash
 sudo reboot
@@ -192,13 +227,13 @@ After ~60 seconds:
 
 ```bash
 # Check service is running
-sudo systemctl status waterrower
+sudo systemctl status bouycast
 
 # Tail live logs
-journalctl -u waterrower -f
+journalctl -u bouycast -f
 
 # Check system status via API
-curl -s http://waterrower.local:8080/api/status | python3 -m json.tool
+curl -s http://bouycast.local:8080/api/status | python3 -m json.tool
 ```
 
 Expected `/api/status` response when S4 is not yet connected:
@@ -215,7 +250,7 @@ Expected `/api/status` response when S4 is not yet connected:
 
 ---
 
-## 8 — Connect the WaterRower S4
+## 9 — Connect the WaterRower S4
 
 1. Plug the USB OTG cable into the Pi's **OTG** micro-USB port (left port, closest to the board edge).
 2. Plug the other end into the WaterRower S4 USB port on the back of the monitor.
@@ -224,7 +259,7 @@ Expected `/api/status` response when S4 is not yet connected:
 
    ```bash
    ls /dev/ttyACM*
-   journalctl -u waterrower -f
+   journalctl -u bouycast -f
    ```
 
    Look for `S4 connected` in the logs.
@@ -232,19 +267,19 @@ Expected `/api/status` response when S4 is not yet connected:
 5. Re-check `/api/status`:
 
    ```bash
-   curl -s http://waterrower.local:8080/api/status | python3 -m json.tool
+   curl -s http://bouycast.local:8080/api/status | python3 -m json.tool
    ```
 
    `s4_connected` should now be `true`.
 
 ---
 
-## 9 — Open the dashboard
+## 10 — Open the dashboard
 
 From your phone or laptop on the same Wi-Fi:
 
 ```
-http://waterrower.local:8080
+http://bouycast.local:8080
 ```
 
 For best experience on iPhone/iPad:
@@ -258,11 +293,14 @@ For best experience on iPhone/iPad:
 
 | Symptom | Fix |
 |---|---|
-| `ping waterrower.local` fails | Check hostname in Imager settings; try IP address from router; ensure avahi-daemon is running: `sudo systemctl status avahi-daemon` |
+| `ping bouycast.local` fails | Check hostname in Imager settings; try IP address from router; ensure avahi-daemon is running: `sudo systemctl status avahi-daemon` |
 | `ssh: connection refused` | SSH not enabled in Imager — re-flash with SSH enabled |
+| `git: command not found` | Run `sudo apt-get install -y git` |
+| `git clone` permission denied | Ensure your SSH public key is added to GitHub; test with `ssh -T git@github.com` |
 | S4 not detected (`/dev/ttyACM0` missing) | Try the other micro-USB port; check `dmesg \| grep tty` for CDC device |
+| `SetDiscoveryFilter failed: org.bluez.Error.NotReady` | The Bluetooth controller is not powered on. Run: `sudo rfkill unblock bluetooth && sudo systemctl restart bluetooth`, then in `bluetoothctl` run `power on` before `scan on` |
 | TICKR not connecting | Verify MAC in config.toml; ensure `pi` is in `bluetooth` group: `groups pi`; restart bluetooth: `sudo systemctl restart bluetooth` |
 | `Permission denied` on serial port | Run `sudo usermod -aG dialout pi` then reboot |
-| Service fails to start | Check full logs: `journalctl -u waterrower -n 50 --no-pager` |
+| Service fails to start | Check full logs: `journalctl -u bouycast -n 50 --no-pager` |
 | Strava auth page unreachable | Ensure service is running; check firewall (Pi OS Lite has no firewall by default) |
 | Dashboard not loading | Try `http://<IP>:8080` instead of mDNS; check service logs |
