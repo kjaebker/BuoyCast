@@ -28,7 +28,7 @@ Step-by-step guide to flash, configure, and run BuoyCast on a Raspberry Pi Zero 
 
    | Setting | Value |
    |---|---|
-   | Set hostname | `bouycast` |
+   | Set hostname | `buoycast` |
    | Enable SSH | ✅ — Use password authentication |
    | Username | `pi` |
    | Password | choose a strong password |
@@ -49,13 +49,13 @@ Step-by-step guide to flash, configure, and run BuoyCast on a Raspberry Pi Zero 
 3. Find the Pi's IP address — check your router's DHCP leases, or use mDNS:
 
    ```bash
-   ping bouycast.local
+   ping buoycast.local
    ```
 
 4. SSH in:
 
    ```bash
-   ssh pi@bouycast.local
+   ssh pi@buoycast.local
    # or: ssh pi@<IP address>
    ```
 
@@ -80,7 +80,7 @@ The repo is private, so you need to authenticate with GitHub via SSH key:
 
 ```bash
 # Generate an SSH key on the Pi
-ssh-keygen -t ed25519 -C "bouycast-pi" -f ~/.ssh/id_ed25519 -N ""
+ssh-keygen -t ed25519 -C "buoycast-pi" -f ~/.ssh/id_ed25519 -N ""
 
 # Print the public key
 cat ~/.ssh/id_ed25519.pub
@@ -102,8 +102,8 @@ ssh -T git@github.com
 
 ```bash
 # Clone BuoyCast
-git clone git@github.com:kjaebker/BouyCast.git
-cd BouyCast
+git clone git@github.com:kjaebker/BuoyCast.git
+cd BuoyCast
 
 # Run the install script as root
 sudo bash install.sh
@@ -114,7 +114,7 @@ The script will:
 - Set up a Python virtualenv in `/opt/buoycast/.venv`
 - Build the React dashboard
 - Copy `config.toml.example` → `/opt/buoycast/config.toml`
-- Install and enable the `bouycast` systemd service
+- Install and enable the `buoycast` systemd service
 - Add `pi` to the `bluetooth` and `dialout` groups
 
 ---
@@ -180,13 +180,13 @@ Strava requires an OAuth authorisation that must be done once from a browser.
 ### 7a — Create a Strava API app
 
 1. Go to [strava.com/settings/api](https://www.strava.com/settings/api) and create an app.
-2. Set **Authorization Callback Domain** to `bouycast.local`.
+2. Set **Authorization Callback Domain** to `buoycast.local`.
 3. Copy **Client ID** and **Client Secret** into `config.toml`.
 
 ### 7b — Start the service temporarily
 
 ```bash
-sudo systemctl start bouycast
+sudo systemctl start buoycast
 ```
 
 ### 7c — Authorise from your phone or laptop browser
@@ -194,7 +194,7 @@ sudo systemctl start bouycast
 Open:
 
 ```
-http://bouycast.local:8080/api/strava/auth
+http://buoycast.local:8080/api/strava/auth
 ```
 
 You will be redirected to Strava's consent page. Log in and click **Authorize**.
@@ -203,7 +203,7 @@ The Pi will receive the token and store it in `data/buoycast.db`.
 ### 7d — Verify the token was saved
 
 ```bash
-curl -s http://bouycast.local:8080/api/strava/status | python3 -m json.tool
+curl -s http://buoycast.local:8080/api/strava/status | python3 -m json.tool
 ```
 
 Expected response:
@@ -227,13 +227,13 @@ After ~60 seconds:
 
 ```bash
 # Check service is running
-sudo systemctl status bouycast
+sudo systemctl status buoycast
 
 # Tail live logs
-journalctl -u bouycast -f
+journalctl -u buoycast -f
 
 # Check system status via API
-curl -s http://bouycast.local:8080/api/status | python3 -m json.tool
+curl -s http://buoycast.local:8080/api/status | python3 -m json.tool
 ```
 
 Expected `/api/status` response when S4 is not yet connected:
@@ -259,7 +259,7 @@ Expected `/api/status` response when S4 is not yet connected:
 
    ```bash
    ls /dev/ttyACM*
-   journalctl -u bouycast -f
+   journalctl -u buoycast -f
    ```
 
    Look for `S4 connected` in the logs.
@@ -267,7 +267,7 @@ Expected `/api/status` response when S4 is not yet connected:
 5. Re-check `/api/status`:
 
    ```bash
-   curl -s http://bouycast.local:8080/api/status | python3 -m json.tool
+   curl -s http://buoycast.local:8080/api/status | python3 -m json.tool
    ```
 
    `s4_connected` should now be `true`.
@@ -279,7 +279,7 @@ Expected `/api/status` response when S4 is not yet connected:
 From your phone or laptop on the same Wi-Fi:
 
 ```
-http://bouycast.local:8080
+http://buoycast.local:8080
 ```
 
 For best experience on iPhone/iPad:
@@ -293,7 +293,7 @@ For best experience on iPhone/iPad:
 
 | Symptom | Fix |
 |---|---|
-| `ping bouycast.local` fails | Check hostname in Imager settings; try IP address from router; ensure avahi-daemon is running: `sudo systemctl status avahi-daemon` |
+| `ping buoycast.local` fails | Check hostname in Imager settings; try IP address from router; ensure avahi-daemon is running: `sudo systemctl status avahi-daemon` |
 | `ssh: connection refused` | SSH not enabled in Imager — re-flash with SSH enabled |
 | `git: command not found` | Run `sudo apt-get install -y git` |
 | `git clone` permission denied | Ensure your SSH public key is added to GitHub; test with `ssh -T git@github.com` |
@@ -301,6 +301,6 @@ For best experience on iPhone/iPad:
 | `SetDiscoveryFilter failed: org.bluez.Error.NotReady` | The Bluetooth controller is not powered on. Run: `sudo rfkill unblock bluetooth && sudo systemctl restart bluetooth`, then in `bluetoothctl` run `power on` before `scan on` |
 | TICKR not connecting | Verify MAC in config.toml; ensure `pi` is in `bluetooth` group: `groups pi`; restart bluetooth: `sudo systemctl restart bluetooth` |
 | `Permission denied` on serial port | Run `sudo usermod -aG dialout pi` then reboot |
-| Service fails to start | Check full logs: `journalctl -u bouycast -n 50 --no-pager` |
+| Service fails to start | Check full logs: `journalctl -u buoycast -n 50 --no-pager` |
 | Strava auth page unreachable | Ensure service is running; check firewall (Pi OS Lite has no firewall by default) |
 | Dashboard not loading | Try `http://<IP>:8080` instead of mDNS; check service logs |
