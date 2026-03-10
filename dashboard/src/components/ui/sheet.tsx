@@ -99,7 +99,7 @@ const SheetTrigger = React.forwardRef<HTMLButtonElement, SheetTriggerProps>(
 SheetTrigger.displayName = "SheetTrigger";
 
 const sheetVariants = cva(
-  "fixed z-50 gap-4 bg-background p-6 shadow-lg transition-transform duration-300 ease-in-out",
+  "fixed z-50 gap-4 bg-background text-foreground p-6 shadow-lg transition-transform duration-300 ease-in-out",
   {
     variants: {
       side: {

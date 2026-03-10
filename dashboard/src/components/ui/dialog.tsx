@@ -112,7 +112,7 @@ const DialogContent = React.forwardRef<HTMLDialogElement, DialogContentProps>(
       <dialog
         ref={combinedRef}
         className={cn(
-          "fixed z-50 m-auto max-h-[85vh] w-full max-w-lg rounded-lg border bg-background p-0 shadow-lg backdrop:bg-black/80",
+          "fixed z-50 m-auto max-h-[85vh] w-full max-w-lg rounded-lg border bg-background text-foreground p-0 shadow-lg backdrop:bg-black/80",
           "open:animate-in open:fade-in-0 open:zoom-in-95",
           className
         )}
