@@ -200,7 +200,7 @@ class S4Reader:
         """Poll S4 memory addresses and publish metrics."""
         interval = 1.0 / self._settings.poll_interval_hz
 
-        while self._running and self._connected:
+        while self._running and self._connected and not self._paused:
             # Send read commands for all addresses
             for addr in POLL_ADDRESSES:
                 cmd = build_read_command(addr)
@@ -276,4 +276,7 @@ class S4Reader:
             raw = await asyncio.wait_for(self._serial.readline(), timeout=timeout)
         except asyncio.TimeoutError:
             raise TimeoutError(f"No response from S4 within {timeout}s")
+        except TypeError as e:
+            # Port was closed mid-read (fd becomes None); treat as disconnect
+            raise OSError(f"Serial port closed during read: {e}") from e
         return raw.decode("ascii", errors="replace").strip()
