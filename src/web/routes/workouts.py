@@ -106,6 +106,15 @@ async def end_workout(request: Request):
     return {"state": new_state.value}
 
 
+@router.post("/workout/reset")
+async def reset_workout(request: Request):
+    """Reset from SUMMARY back to IDLE. Call after dismissing the summary screen."""
+    state = _get_state(request)
+    sm = state.state_machine
+    new_state = await sm.reset()
+    return {"state": new_state.value}
+
+
 # --- Upload / skip ---
 
 

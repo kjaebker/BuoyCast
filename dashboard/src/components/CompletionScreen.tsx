@@ -97,6 +97,7 @@ export function CompletionScreen({ onDismiss }: CompletionScreenProps) {
     if (workout) {
       await api.skipWorkout(workout.id).catch(() => {});
     }
+    await api.resetWorkout().catch(() => {});
     onDismiss();
   };
 

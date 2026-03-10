@@ -120,7 +120,7 @@ export function WorkoutControls({ workoutState }: WorkoutControlsProps) {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmEnd(false)}>
+            <Button variant="secondary" onClick={() => setConfirmEnd(false)}>
               Cancel
             </Button>
             <Button

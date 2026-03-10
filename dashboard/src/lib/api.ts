@@ -55,6 +55,9 @@ export const resumeWorkout = () =>
 export const endWorkout = () =>
   fetchJSON<{ state: string }>("/workout/end", { method: "POST" });
 
+export const resetWorkout = () =>
+  fetchJSON<{ state: string }>("/workout/reset", { method: "POST" });
+
 // --- Upload ---
 
 export const uploadWorkout = (id: string) =>

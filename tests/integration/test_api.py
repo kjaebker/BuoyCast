@@ -228,7 +228,18 @@ class TestWorkoutControl:
         resp = await client.post("/api/workout/resume")
         assert resp.status_code == 409
 
-    async def test_full_control_flow(self, client):
+    async def test_reset(self, client, sm):
+        await sm.start()
+        await sm.end()
+        resp = await client.post("/api/workout/reset")
+        assert resp.status_code == 200
+        assert resp.json()["state"] == "IDLE"
+
+    async def test_reset_from_idle_returns_409(self, client):
+        resp = await client.post("/api/workout/reset")
+        assert resp.status_code == 409
+
+    async def test_full_control_flow_with_reset(self, client):
         resp = await client.post("/api/workout/start")
         assert resp.json()["state"] == "ACTIVE"
         resp = await client.post("/api/workout/pause")
@@ -237,6 +248,11 @@ class TestWorkoutControl:
         assert resp.json()["state"] == "ACTIVE"
         resp = await client.post("/api/workout/end")
         assert resp.json()["state"] == "SUMMARY"
+        resp = await client.post("/api/workout/reset")
+        assert resp.json()["state"] == "IDLE"
+        # Should be able to start a new workout immediately
+        resp = await client.post("/api/workout/start")
+        assert resp.json()["state"] == "ACTIVE"
 
 
 # --- Upload / skip ---
