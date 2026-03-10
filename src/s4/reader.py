@@ -28,9 +28,9 @@ from src.s4.protocol import (
     POLL_ADDRESSES,
     RESP_WR,
     ProtocolError,
+    build_exit,
     build_handshake,
     build_read_command,
-    build_reset,
     elapsed_time_to_seconds,
     pace_raw_to_seconds_per_500m,
     parse_response,
@@ -98,6 +98,7 @@ class S4Reader:
         self._settings = settings or S4Settings()
         self._running = False
         self._connected = False
+        self._paused = False
         self._task: asyncio.Task[None] | None = None
 
         # Latest polled values (accumulated across poll cycles)
@@ -106,6 +107,24 @@ class S4Reader:
     @property
     def connected(self) -> bool:
         return self._connected
+
+    @property
+    def paused(self) -> bool:
+        return self._paused
+
+    def resume_polling(self) -> None:
+        """Allow the run loop to (re)connect after a disconnect_and_pause()."""
+        self._paused = False
+
+    async def disconnect_and_pause(self) -> None:
+        """Send EXIT to release USB mode, disconnect, and stop auto-reconnecting."""
+        self._paused = True
+        if self._connected:
+            try:
+                await self._send(build_exit())
+            except Exception:
+                pass
+        await self._disconnect()
 
     async def start(self) -> None:
         """Start the reader loop as a background task."""
@@ -127,20 +146,23 @@ class S4Reader:
     async def _run_loop(self) -> None:
         """Main loop: connect → poll → reconnect on failure."""
         while self._running:
+            if self._paused:
+                await asyncio.sleep(0.5)
+                continue
             try:
                 await self._connect()
                 await self._poll_loop()
             except (OSError, ProtocolError) as e:
                 logger.warning("S4 connection error: %s", e)
                 await self._disconnect()
-                if self._running:
+                if self._running and not self._paused:
                     await asyncio.sleep(self._settings.reconnect_delay_s)
             except asyncio.CancelledError:
                 raise
             except Exception:
                 logger.exception("Unexpected error in S4 reader")
                 await self._disconnect()
-                if self._running:
+                if self._running and not self._paused:
                     await asyncio.sleep(self._settings.reconnect_delay_s)
 
     async def _connect(self) -> None:
@@ -155,9 +177,6 @@ class S4Reader:
         resp_type, _, _ = parse_response(response)
         if resp_type != RESP_WR:
             raise ProtocolError(f"Expected {RESP_WR}, got: {response}")
-
-        # Clear memory
-        await self._send(build_reset())
 
         self._connected = True
         self._values.clear()

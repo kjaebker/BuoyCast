@@ -156,6 +156,11 @@ def build_reset() -> str:
     return CMD_RESET
 
 
+def build_exit() -> str:
+    """Build the EXIT command — releases USB mode so the S4 can enter sleep."""
+    return CMD_EXIT
+
+
 # ---------------------------------------------------------------------------
 # Response parsers
 # ---------------------------------------------------------------------------

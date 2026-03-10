@@ -32,6 +32,7 @@ class AppState:
         self.event_bus: EventBus | None = None
         self.state_machine: WorkoutStateMachine | None = None
         self.db: Any = None
+        self.s4_reader: Any = None
         self.s4_connected: bool = False
         self.tickr_connected: bool = False
         self.start_time: float = time.monotonic()
@@ -112,8 +113,10 @@ def create_app(
     @app.get("/api/status")
     async def get_status():
         sm = app_state.state_machine
+        reader = app_state.s4_reader
         return {
             "s4_connected": app_state.s4_connected,
+            "s4_paused": reader.paused if reader else False,
             "tickr_connected": app_state.tickr_connected,
             "workout_state": sm.state.value if sm else WorkoutState.IDLE.value,
             "uptime_seconds": int(time.monotonic() - app_state.start_time),
@@ -123,6 +126,25 @@ def create_app(
                 else None
             ),
         }
+
+    # S4 polling control
+    @app.post("/api/s4/connect")
+    async def s4_connect():
+        reader = app_state.s4_reader
+        if reader is None:
+            return JSONResponse(status_code=503, content={"detail": "S4 reader not available"})
+        reader.resume_polling()
+        logger.info("S4 polling resumed via API")
+        return {"s4_paused": False}
+
+    @app.post("/api/s4/disconnect")
+    async def s4_disconnect():
+        reader = app_state.s4_reader
+        if reader is None:
+            return JSONResponse(status_code=503, content={"detail": "S4 reader not available"})
+        await reader.disconnect_and_pause()
+        logger.info("S4 polling paused via API")
+        return {"s4_paused": True}
 
     # WebSocket endpoint
     @app.websocket("/ws/live")
@@ -169,8 +191,10 @@ async def _ws_broadcast_loop(app_state: AppState) -> None:
     resumed_q = bus.subscribe(EventType.WORKOUT_RESUMED)
     ended_q = bus.subscribe(EventType.WORKOUT_ENDED)
     idle_q = bus.subscribe(EventType.IDLE_WARNING)
+    s4_conn_q = bus.subscribe(EventType.S4_CONNECTED)
+    s4_disc_q = bus.subscribe(EventType.S4_DISCONNECTED)
 
-    queues = [metrics_q, started_q, paused_q, resumed_q, ended_q, idle_q]
+    queues = [metrics_q, started_q, paused_q, resumed_q, ended_q, idle_q, s4_conn_q, s4_disc_q]
 
     while True:
         # Wait for any event from any queue
@@ -193,6 +217,12 @@ async def _ws_broadcast_loop(app_state: AppState) -> None:
             ):
                 app_state.last_metrics_ts = event.data.timestamp
 
+            # Track S4 connection state
+            if event.type == EventType.S4_CONNECTED:
+                app_state.s4_connected = True
+            elif event.type == EventType.S4_DISCONNECTED:
+                app_state.s4_connected = False
+
             # Build WSMessage
             if event.type == EventType.MERGED_METRICS and isinstance(
                 event.data, RowingMetrics
@@ -200,6 +230,15 @@ async def _ws_broadcast_loop(app_state: AppState) -> None:
                 msg = WSMessage(
                     type="metrics_update",
                     data=event.data.model_dump(mode="json"),
+                )
+            elif event.type in (EventType.S4_CONNECTED, EventType.S4_DISCONNECTED):
+                reader = app_state.s4_reader
+                msg = WSMessage(
+                    type="s4_status",
+                    data={
+                        "connected": event.type == EventType.S4_CONNECTED,
+                        "paused": reader.paused if reader else False,
+                    },
                 )
             else:
                 msg = WSMessage(
