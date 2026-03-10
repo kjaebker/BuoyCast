@@ -6,7 +6,6 @@ set -euo pipefail
 INSTALL_DIR="/opt/buoycast"
 SERVICE_NAME="waterrower"
 SERVICE_USER="pi"
-NODE_MAJOR=20
 
 # Colors for output
 RED='\033[0;31m'
@@ -33,15 +32,8 @@ apt-get install -y -qq \
     bluez bluetooth \
     avahi-daemon avahi-utils \
     git curl
-
-# Install Node.js if not present (for dashboard build)
-if ! command -v node &>/dev/null; then
-    info "Installing Node.js $NODE_MAJOR..."
-    curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash -
-    apt-get install -y -qq nodejs
-else
-    info "Node.js already installed: $(node --version)"
-fi
+# Node.js is NOT required on the Pi — the dashboard is pre-built by GitHub
+# Actions and the compiled dist/ is included in the repository.
 
 # ── Copy application files ───────────────────────────────────────────
 info "Setting up application directory..."
@@ -79,16 +71,15 @@ fi
 
 info "Python packages installed"
 
-# ── Dashboard build ──────────────────────────────────────────────────
-info "Building dashboard..."
-cd "$INSTALL_DIR/dashboard"
-npm ci --silent
-# Skip tsc type-check (dev-time only); run vite build directly.
-# Cap Node heap to 256 MB so builds succeed on Pi Zero 2W (512 MB RAM).
-NODE_OPTIONS="--max-old-space-size=256" npx vite build
-cd "$INSTALL_DIR"
-
-info "Dashboard built successfully"
+# ── Dashboard (pre-built) ────────────────────────────────────────────
+# The dashboard is built by GitHub Actions (not on the Pi) to avoid the
+# Node.js JS-heap OOM on Pi Zero 2W's 512 MB RAM.  The compiled dist/ is
+# committed to the repo, so `git pull` is all that's needed to update it.
+if [[ -d "$INSTALL_DIR/dashboard/dist" ]]; then
+    info "Dashboard dist present (pre-built by CI)"
+else
+    warn "dashboard/dist/ missing — make sure you cloned the full repo and CI has run"
+fi
 
 # ── Config file ──────────────────────────────────────────────────────
 if [[ ! -f "$INSTALL_DIR/config.toml" ]]; then
