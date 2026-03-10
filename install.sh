@@ -83,8 +83,9 @@ info "Python packages installed"
 info "Building dashboard..."
 cd "$INSTALL_DIR/dashboard"
 npm ci --silent
-# Skip tsc type-check (dev-time only); run vite build directly
-npx vite build
+# Skip tsc type-check (dev-time only); run vite build directly.
+# Cap Node heap to 256 MB so builds succeed on Pi Zero 2W (512 MB RAM).
+NODE_OPTIONS="--max-old-space-size=256" npx vite build
 cd "$INSTALL_DIR"
 
 info "Dashboard built successfully"
