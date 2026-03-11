@@ -206,32 +206,57 @@ class S4Reader:
     async def _poll_loop(self) -> None:
         """Poll S4 memory addresses and publish metrics.
 
-        Sequential: send one IRD command then immediately read its response.
-        This avoids concurrent reads where orphaned executor threads consume
-        response bytes that belong to the next read.
+        Sequential: send one IRD command then read until we get the matching
+        IDD response (discarding spontaneous PINGs/SS/SE in between).
         """
         interval = 1.0 / self._settings.poll_interval_hz
+        first_cycle = True
 
         while self._running and self._connected and not self._paused:
             cycle_start = asyncio.get_running_loop().time()
+            hits = 0
 
             for addr in POLL_ADDRESSES:
                 if not self._running or not self._connected or self._paused:
                     break
-                await self._send(build_read_command(addr))
-                try:
-                    line = await self._read_line()
-                except (TimeoutError, OSError):
-                    continue
 
-                try:
-                    _, addr_hex, value = parse_response(line)
-                except ProtocolError as e:
-                    logger.debug("Skipping malformed response: %s", e)
-                    continue
+                cmd = build_read_command(addr)
+                logger.debug("S4 >> %s", cmd)
+                await self._send(cmd)
 
-                if addr_hex is not None and value is not None:
-                    self._values[addr_hex] = value
+                # Read until we get the matching IDD response or time out.
+                # Up to 5 reads to absorb interleaved PING/SS/SE messages.
+                for _ in range(5):
+                    try:
+                        line = await self._read_line()
+                    except TimeoutError:
+                        logger.debug("S4 timeout waiting for response to %s", cmd)
+                        break
+                    except OSError:
+                        raise
+
+                    logger.debug("S4 << %r", line)
+
+                    try:
+                        _, addr_hex, value = parse_response(line)
+                    except ProtocolError as e:
+                        logger.debug("Skipping malformed response: %s", e)
+                        continue
+
+                    if addr_hex == addr.address and value is not None:
+                        self._values[addr_hex] = value
+                        hits += 1
+                        break
+                    elif addr_hex is None:
+                        # Spontaneous message (PING, SS, SE) — discard and keep reading
+                        continue
+                    else:
+                        # Stale response for a different address — discard
+                        logger.debug("S4 stale response: expected %s got %s", addr.address, addr_hex)
+
+            if first_cycle:
+                logger.info("S4 first poll cycle complete: %d/%d responses", hits, len(POLL_ADDRESSES))
+                first_cycle = False
 
             metrics = self._build_metrics()
             await self._bus.emit(EventType.METRICS_UPDATE, data=metrics)
