@@ -165,7 +165,10 @@ class TickrReader:
                 # Recreate the BLE client each attempt — on Linux/BlueZ a failed
                 # connection leaves the client in a broken state that can't be reused.
                 if self._ble_factory is not None:
-                    self._ble = self._ble_factory()
+                    client = self._ble_factory()
+                    if asyncio.iscoroutine(client):
+                        client = await client
+                    self._ble = client
                 await self._connect()
                 backoff = self._backoff_base_s  # Reset on successful connection
 
@@ -177,7 +180,9 @@ class TickrReader:
                 await self._disconnect()
 
             except (OSError, Exception) as e:
-                logger.warning("TICKR connection error: %s", e)
+                msg = str(e) or type(e).__name__
+                logger.warning("TICKR connection error: %s", msg)
+                logger.debug("TICKR connection error details:", exc_info=True)
                 await self._disconnect()
 
             if self._running:
