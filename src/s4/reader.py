@@ -214,6 +214,28 @@ class S4Reader:
             except TimeoutError:
                 break
 
+        # Probe: request firmware version to confirm the S4 accepts commands after RESET
+        logger.debug("S4 handshake: probing with IV?")
+        await self._send("IV?")
+        for _ in range(4):
+            try:
+                line = await self._read_line()
+                logger.debug("S4 probe: << %r", line)
+            except TimeoutError:
+                logger.debug("S4 probe: timeout")
+                break
+
+        # Probe: try one IRD read to see if it works before committing to poll loop
+        logger.debug("S4 handshake: probing IRD with IRDS1E3 (elapsed seconds)")
+        await self._send("IRDS1E3" + "\r\n")
+        for _ in range(4):
+            try:
+                line = await self._read_line()
+                logger.debug("S4 probe IRD: << %r", line)
+            except TimeoutError:
+                logger.debug("S4 probe IRD: timeout")
+                break
+
         self._connected = True
         self._values.clear()
         await self._bus.emit(EventType.S4_CONNECTED)
