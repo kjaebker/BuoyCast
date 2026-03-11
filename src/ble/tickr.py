@@ -7,6 +7,7 @@ can be swapped for a mock in tests.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 from datetime import datetime, timezone
 from typing import Callable, Protocol
@@ -116,7 +117,11 @@ class TickrReader:
     ) -> None:
         if callable(ble_client) and not hasattr(ble_client, "connect"):
             self._ble_factory: Callable[[], BLEClient] | None = ble_client
-            self._ble: BLEClient = ble_client()
+            # Don't eagerly call async factories — the coroutine would never be awaited.
+            # _run_loop creates the client on each connect attempt.
+            self._ble: BLEClient | None = (  # type: ignore[assignment]
+                None if inspect.iscoroutinefunction(ble_client) else ble_client()
+            )
         else:
             self._ble_factory = None
             self._ble = ble_client  # type: ignore[assignment]
@@ -203,7 +208,7 @@ class TickrReader:
         was_connected = self._connected
         self._connected = False
         try:
-            if self._ble.is_connected:
+            if self._ble is not None and self._ble.is_connected:
                 await self._ble.stop_notify(HR_MEASUREMENT_UUID)
                 await self._ble.disconnect()
         except Exception:
