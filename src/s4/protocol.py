@@ -224,9 +224,9 @@ def parse_response(line: str) -> tuple[str, str | None, int | None]:
 def stroke_rate_raw_to_spm(raw: int) -> float:
     """Convert raw stroke rate (address 1A9) to strokes per minute.
 
-    The S4 stores stroke rate as SPM × 2, so SPM = raw / 2.
+    Address 1A9 stores SPM directly (confirmed: S4 display matches raw value).
     """
-    return raw / 2.0
+    return float(raw)
 
 
 def avg_speed_to_pace(cmps: int) -> float:

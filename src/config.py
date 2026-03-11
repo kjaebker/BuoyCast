@@ -16,7 +16,7 @@ class ServerSettings(BaseModel):
 class S4Settings(BaseModel):
     port: str = "/dev/ttyACM0"
     baud_rate: int = 19200
-    poll_interval_hz: float = 1.0
+    poll_interval_hz: float = 4.0
     reconnect_delay_s: int = 5
 
 
