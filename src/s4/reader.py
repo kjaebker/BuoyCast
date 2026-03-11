@@ -31,6 +31,7 @@ from src.s4.protocol import (
     build_exit,
     build_handshake,
     build_read_command,
+    build_reset,
     elapsed_time_to_seconds,
     pace_raw_to_seconds_per_500m,
     parse_response,
@@ -47,20 +48,24 @@ class AsyncSerial:
         self._serial = port
 
     async def open(self) -> None:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self._serial.open)
 
     async def close(self) -> None:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self._serial.close)
 
     async def readline(self) -> bytes:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._serial.readline)
 
     async def write(self, data: bytes) -> None:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self._serial.write, data)
+
+    async def flush_input(self) -> None:
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self._serial.reset_input_buffer)
 
     @property
     def is_open(self) -> bool:
@@ -169,7 +174,11 @@ class S4Reader:
         """Open serial port and perform S4 handshake."""
         await self._serial.open()
 
+        # Flush any stale bytes left in the OS buffer from a previous session
+        await self._serial.flush_input()
+
         # Send USB handshake
+        logger.debug("S4 handshake: sending USB")
         await self._send(build_handshake())
 
         # Wait for _WR_ response — retry for up to ~5s (10 × serial timeout)
@@ -178,12 +187,26 @@ class S4Reader:
             try:
                 response = await self._read_line()
             except TimeoutError:
+                logger.debug("S4 handshake: timeout waiting for _WR_")
                 continue
+            logger.debug("S4 handshake: << %r", response)
             resp_type, _, _ = parse_response(response)
             if resp_type == RESP_WR:
                 break
         if resp_type != RESP_WR:
-            raise ProtocolError(f"No _WR_ handshake response from S4")
+            raise ProtocolError("No _WR_ handshake response from S4")
+
+        # RESET primes the S4 memory for IRD polling — required before reads work
+        logger.debug("S4 handshake: sending RESET")
+        await self._send(build_reset())
+
+        # Drain any messages the S4 sends after RESET before we start polling
+        for _ in range(6):
+            try:
+                line = await self._read_line()
+                logger.debug("S4 post-reset: << %r", line)
+            except TimeoutError:
+                break
 
         self._connected = True
         self._values.clear()
