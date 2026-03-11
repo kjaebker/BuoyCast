@@ -259,12 +259,11 @@ class TestWorkoutControl:
 
 
 class TestUploadAndSkip:
-    async def test_upload_returns_202(self, client, db):
+    async def test_upload_returns_503_without_strava_auth(self, client, db):
+        # When no Strava auth is configured, upload returns 503
         await insert_workout(db, _sample_workout("w001"))
         resp = await client.post("/api/workouts/w001/upload")
-        assert resp.status_code == 202
-        data = resp.json()
-        assert data["status"] == "upload_queued"
+        assert resp.status_code == 503
 
     async def test_upload_nonexistent_returns_404(self, client):
         resp = await client.post("/api/workouts/nope/upload")

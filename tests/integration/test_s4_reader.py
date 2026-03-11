@@ -45,7 +45,7 @@ class TestS4ReaderHandshake:
 
         await reader.stop()
 
-    async def test_handshake_sends_usb_then_reset(
+    async def test_handshake_sends_usb_then_iv_query(
         self, mock_serial: MockSerial, event_bus: EventBus, fast_settings: S4Settings
     ):
         mock_serial.set_steady_state()
@@ -56,10 +56,10 @@ class TestS4ReaderHandshake:
         await asyncio.sleep(0.2)
         await reader.stop()
 
-        # First write should be USB, second should be RESET
+        # Startup sequence: USB → IV? (RESET is NOT sent at startup)
         writes = [w.decode("ascii").strip() for w in mock_serial.write_log]
         assert writes[0] == "USB"
-        assert writes[1] == "RESET"
+        assert writes[1] == "IV?"
 
 
 class TestS4ReaderMetrics:
@@ -102,8 +102,10 @@ class TestS4ReaderMetrics:
         assert metrics.stroke_rate == 28.0
         assert metrics.stroke_count == 100
         assert metrics.distance_m == 500.0
-        assert metrics.pace_s_per_500m == 120.0
-        assert metrics.power_watts == 150.0
+        # Pace is derived via avg_speed (cm/s) which involves integer division
+        # so we allow a small tolerance (< 1 second)
+        assert metrics.pace_s_per_500m == pytest.approx(120.0, abs=1.0)
+        assert metrics.power_watts == pytest.approx(150.0, abs=1.0)
         assert metrics.calories == 50
         assert metrics.elapsed_seconds == 600  # 10 minutes
 
@@ -122,7 +124,8 @@ class TestS4ReaderMetrics:
 
         assert metrics.stroke_rate == 0.0
         assert metrics.distance_m == 0.0
-        assert metrics.power_watts == 0.0
+        # Power is None when no non-zero samples in the rolling buffer
+        assert metrics.power_watts is None
 
         await reader.stop()
 

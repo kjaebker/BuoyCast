@@ -36,6 +36,7 @@ from src.s4.protocol import (
     build_handshake,
     build_iv_query,
     build_read_command,
+    build_reset,
     elapsed_time_to_seconds,
     parse_response,
     stroke_rate_raw_to_spm,
@@ -126,6 +127,18 @@ class S4Reader:
     def resume_polling(self) -> None:
         """Allow the run loop to (re)connect after a disconnect_and_pause()."""
         self._paused = False
+
+    async def send_reset(self) -> None:
+        """Send RESET to clear all workout counters on the S4.
+
+        Only sends if currently connected. Safe to call even if S4 doesn't respond.
+        """
+        if self._connected:
+            try:
+                await self._send(build_reset())
+                logger.info("S4 RESET sent — counters cleared")
+            except Exception as e:
+                logger.warning("Failed to send S4 RESET: %s", e)
 
     async def disconnect_and_pause(self) -> None:
         """Send EXIT to release USB mode, disconnect, and stop auto-reconnecting."""

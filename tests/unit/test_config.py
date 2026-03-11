@@ -25,7 +25,7 @@ class TestSubSettings:
     def test_s4_defaults(self):
         s = S4Settings()
         assert s.baud_rate == 19200
-        assert s.poll_interval_hz == 1.0
+        assert s.poll_interval_hz == 4.0
         assert s.reconnect_delay_s == 5
 
     def test_heart_rate_defaults(self):

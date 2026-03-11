@@ -158,6 +158,11 @@ def build_exit() -> str:
     return CMD_EXIT
 
 
+def build_reset() -> str:
+    """Build the RESET command — clears all workout counters on the S4."""
+    return CMD_RESET
+
+
 # ---------------------------------------------------------------------------
 # Response parsers
 # ---------------------------------------------------------------------------
