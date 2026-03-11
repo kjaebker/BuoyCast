@@ -314,7 +314,7 @@ class S4Reader:
             distance_m=float(distance_m) if distance_m is not None else None,
             pace_s_per_500m=avg_speed_to_pace(avg_speed_cmps) if avg_speed_cmps is not None else None,
             power_watts=float(power) if power is not None else None,
-            calories=calories,
+            calories=int(calories / 1000) if calories is not None else None,
             elapsed_seconds=elapsed_time_to_seconds(hours, minutes, seconds),
         )
 
