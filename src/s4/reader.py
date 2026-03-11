@@ -172,11 +172,18 @@ class S4Reader:
         # Send USB handshake
         await self._send(build_handshake())
 
-        # Wait for _WR_ response (with timeout)
-        response = await self._read_line(timeout=5.0)
-        resp_type, _, _ = parse_response(response)
+        # Wait for _WR_ response — retry for up to ~5s (10 × serial timeout)
+        resp_type = None
+        for _ in range(10):
+            try:
+                response = await self._read_line()
+            except TimeoutError:
+                continue
+            resp_type, _, _ = parse_response(response)
+            if resp_type == RESP_WR:
+                break
         if resp_type != RESP_WR:
-            raise ProtocolError(f"Expected {RESP_WR}, got: {response}")
+            raise ProtocolError(f"No _WR_ handshake response from S4")
 
         self._connected = True
         self._values.clear()
@@ -197,44 +204,40 @@ class S4Reader:
             logger.info("S4 disconnected")
 
     async def _poll_loop(self) -> None:
-        """Poll S4 memory addresses and publish metrics."""
+        """Poll S4 memory addresses and publish metrics.
+
+        Sequential: send one IRD command then immediately read its response.
+        This avoids concurrent reads where orphaned executor threads consume
+        response bytes that belong to the next read.
+        """
         interval = 1.0 / self._settings.poll_interval_hz
 
         while self._running and self._connected and not self._paused:
-            # Send read commands for all addresses
+            cycle_start = asyncio.get_running_loop().time()
+
             for addr in POLL_ADDRESSES:
-                cmd = build_read_command(addr)
-                await self._send(cmd)
-
-            # Read responses (with timeout for the batch)
-            responses_received = 0
-            deadline = asyncio.get_event_loop().time() + interval
-            while responses_received < len(POLL_ADDRESSES):
-                remaining = deadline - asyncio.get_event_loop().time()
-                if remaining <= 0:
+                if not self._running or not self._connected or self._paused:
                     break
+                await self._send(build_read_command(addr))
                 try:
-                    line = await self._read_line(timeout=remaining)
-                except TimeoutError:
-                    break
+                    line = await self._read_line()
+                except (TimeoutError, OSError):
+                    continue
 
                 try:
-                    resp_type, addr_hex, value = parse_response(line)
+                    _, addr_hex, value = parse_response(line)
                 except ProtocolError as e:
                     logger.debug("Skipping malformed response: %s", e)
                     continue
 
                 if addr_hex is not None and value is not None:
                     self._values[addr_hex] = value
-                    responses_received += 1
-                # Spontaneous messages (SS, SE, PING) are ignored here
 
-            # Build and publish metrics
             metrics = self._build_metrics()
             await self._bus.emit(EventType.METRICS_UPDATE, data=metrics)
 
-            # Sleep until next poll interval
-            sleep_time = deadline - asyncio.get_event_loop().time()
+            elapsed = asyncio.get_running_loop().time() - cycle_start
+            sleep_time = interval - elapsed
             if sleep_time > 0:
                 await asyncio.sleep(sleep_time)
 
@@ -265,18 +268,22 @@ class S4Reader:
         """Send a command string to the S4 (appends line ending)."""
         await self._serial.write(command.encode() + LINE_ENDING)
 
-    async def _read_line(self, timeout: float = 2.0) -> str:
-        """Read one line from serial with timeout.
+    async def _read_line(self) -> str:
+        """Read one line from serial.
+
+        Relies on the serial port's own read timeout (set on the Serial object)
+        to bound the blocking call — no asyncio.wait_for needed, which avoids
+        leaving orphaned executor threads that consume bytes from the buffer.
 
         Raises:
-            TimeoutError: if no line received within timeout
+            TimeoutError: if no line received within the serial port timeout
             OSError: if serial port is closed/disconnected
         """
         try:
-            raw = await asyncio.wait_for(self._serial.readline(), timeout=timeout)
-        except asyncio.TimeoutError:
-            raise TimeoutError(f"No response from S4 within {timeout}s")
+            raw = await self._serial.readline()
         except TypeError as e:
             # Port was closed mid-read (fd becomes None); treat as disconnect
             raise OSError(f"Serial port closed during read: {e}") from e
+        if not raw:
+            raise TimeoutError("No response from S4 (serial timeout)")
         return raw.decode("ascii", errors="replace").strip()
