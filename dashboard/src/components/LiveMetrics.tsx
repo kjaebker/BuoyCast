@@ -100,6 +100,8 @@ const ACTIVE_MESSAGES = [
 
 export function LiveMetrics({ metrics, workoutState }: LiveMetricsProps) {
   const strokeRateHistoryRef = useRef<number[]>([]);
+  const lastActiveStrokeMs = useRef<number>(0);
+  const [effectiveStrokeRate, setEffectiveStrokeRate] = useState<number | null>(null);
   const [msgIdx, setMsgIdx] = useState(0);
 
   useEffect(() => {
@@ -113,9 +115,29 @@ export function LiveMetrics({ metrics, workoutState }: LiveMetricsProps) {
     return () => clearInterval(id);
   }, [workoutState]);
 
-  if (metrics?.stroke_rate != null) {
+  // Track last time we saw an active stroke rate
+  useEffect(() => {
+    if (metrics?.stroke_rate != null && metrics.stroke_rate > 0) {
+      lastActiveStrokeMs.current = Date.now();
+      setEffectiveStrokeRate(metrics.stroke_rate);
+    }
+  }, [metrics?.stroke_rate, metrics?.timestamp]);
+
+  // Decay stroke rate to 0 after 3s without active rowing
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (lastActiveStrokeMs.current > 0 && Date.now() - lastActiveStrokeMs.current > 3000) {
+        setEffectiveStrokeRate(0);
+      }
+    }, 500);
+    return () => clearInterval(id);
+  }, []);
+
+  const strokeRateForDisplay = effectiveStrokeRate;
+
+  if (strokeRateForDisplay != null) {
     const history = strokeRateHistoryRef.current;
-    history.push(metrics.stroke_rate);
+    history.push(strokeRateForDisplay);
     if (history.length > 60) history.shift();
   }
 
@@ -179,7 +201,7 @@ export function LiveMetrics({ metrics, workoutState }: LiveMetricsProps) {
         <MetricTile
           icon={<Activity className="h-3.5 w-3.5" />}
           label="Stroke Rate"
-          value={formatNum(metrics?.stroke_rate ?? null, 1)}
+          value={formatNum(strokeRateForDisplay, 1)}
           unit="spm"
           tone="ember"
           highlight
