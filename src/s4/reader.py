@@ -31,7 +31,6 @@ from src.s4.protocol import (
     build_exit,
     build_handshake,
     build_read_command,
-    build_reset,
     elapsed_time_to_seconds,
     pace_raw_to_seconds_per_500m,
     parse_response,
@@ -196,46 +195,31 @@ class S4Reader:
         if resp_type != RESP_WR:
             raise ProtocolError("No _WR_ handshake response from S4")
 
-        # RESET primes the S4 memory for IRD polling — required before reads work
-        # Brief pause to let the S4 fully enter USB mode before sending RESET
+        # Brief pause to let the S4 fully enter USB mode
         await asyncio.sleep(0.5)
 
-        logger.debug("S4 handshake: sending RESET")
-        await self._send(build_reset())
-
-        # Wait for the S4 to finish processing RESET before IRD polling starts
-        await asyncio.sleep(1.0)
-
-        # Drain any messages the S4 sends after RESET before we start polling
-        for _ in range(6):
+        # Drain any messages the S4 sends after handshake (PINGs, etc.)
+        for _ in range(3):
             try:
                 line = await self._read_line()
-                logger.debug("S4 post-reset: << %r", line)
+                logger.debug("S4 post-handshake: << %r", line)
             except TimeoutError:
                 break
 
-        # Probe a range of IRD commands to find what firmware 2.10 accepts
-        probe_commands = [
-            "IRDS000",   # single byte, very low address
-            "IRDS001",
-            "IRDS1E3",   # elapsed seconds
-            "IRDD1E3",   # same address, double size
-            "IRDD057",   # distance meters
-            "IRDS140",   # stroke rate area, single
-            "IRDD140",   # stroke rate area, double
-        ]
-        for cmd in probe_commands:
-            logger.debug("S4 probe: >> %s", cmd)
-            await self._send(cmd)
-            for _ in range(3):
-                try:
-                    line = await self._read_line()
-                    logger.debug("S4 probe: << %r (for %s)", line, cmd)
-                    if line not in ("ERROR", "PING", "SS", "SE"):
-                        break  # got a real response
-                except TimeoutError:
-                    logger.debug("S4 probe: timeout for %s", cmd)
+        # Probe a single IRD command to verify memory reads work WITHOUT RESET.
+        # Previously RESET was sent here — hypothesis: RESET locks out IRD reads
+        # until the user physically interacts with the monitor.
+        logger.debug("S4 probe: testing IRD without RESET")
+        await self._send("IRDS1E3")
+        for _ in range(3):
+            try:
+                line = await self._read_line()
+                logger.debug("S4 probe (no-reset): << %r", line)
+                if line not in ("PING", "SS", "SE"):
                     break
+            except TimeoutError:
+                logger.debug("S4 probe (no-reset): timeout")
+                break
 
         self._connected = True
         self._values.clear()
