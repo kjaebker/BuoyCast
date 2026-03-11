@@ -15,24 +15,26 @@ from src.config import S4Settings
 from src.events import EventBus, EventType
 from src.models import RowingMetrics
 from src.s4.protocol import (
+    ADDR_AVG_SPEED,
     ADDR_CALORIES,
     ADDR_DISTANCE_M,
     ADDR_ELAPSED_HOURS,
     ADDR_ELAPSED_MINS,
     ADDR_ELAPSED_SECS,
-    ADDR_PACE,
     ADDR_POWER,
     ADDR_STROKE_COUNT,
     ADDR_STROKE_RATE,
     LINE_ENDING,
     POLL_ADDRESSES,
+    RESP_IV,
     RESP_WR,
     ProtocolError,
+    avg_speed_to_pace,
     build_exit,
     build_handshake,
+    build_iv_query,
     build_read_command,
     elapsed_time_to_seconds,
-    pace_raw_to_seconds_per_500m,
     parse_response,
     stroke_rate_raw_to_spm,
 )
@@ -195,30 +197,19 @@ class S4Reader:
         if resp_type != RESP_WR:
             raise ProtocolError("No _WR_ handshake response from S4")
 
-        # Brief pause to let the S4 fully enter USB mode
-        await asyncio.sleep(0.5)
-
-        # Drain any messages the S4 sends after handshake (PINGs, etc.)
-        for _ in range(3):
+        # Send IV? to confirm S4 identity — required by protocol before IRD polling
+        logger.debug("S4 handshake: sending IV?")
+        await self._send(build_iv_query())
+        for _ in range(5):
             try:
-                line = await self._read_line()
-                logger.debug("S4 post-handshake: << %r", line)
-            except TimeoutError:
-                break
-
-        # Probe a single IRD command to verify memory reads work WITHOUT RESET.
-        # Previously RESET was sent here — hypothesis: RESET locks out IRD reads
-        # until the user physically interacts with the monitor.
-        logger.debug("S4 probe: testing IRD without RESET")
-        await self._send("IRDS1E3")
-        for _ in range(3):
-            try:
-                line = await self._read_line()
-                logger.debug("S4 probe (no-reset): << %r", line)
-                if line not in ("PING", "SS", "SE"):
+                response = await self._read_line()
+                logger.debug("S4 handshake: << %r", response)
+                resp_type, _, _ = parse_response(response)
+                if resp_type == RESP_IV:
+                    logger.info("S4 firmware version: %s", response)
                     break
             except TimeoutError:
-                logger.debug("S4 probe (no-reset): timeout")
+                logger.debug("S4 handshake: timeout waiting for IV response")
                 break
 
         self._connected = True
@@ -307,19 +298,19 @@ class S4Reader:
         stroke_rate_raw = self._values.get(ADDR_STROKE_RATE.address)
         stroke_count = self._values.get(ADDR_STROKE_COUNT.address)
         distance_m = self._values.get(ADDR_DISTANCE_M.address)
-        pace_raw = self._values.get(ADDR_PACE.address)
+        avg_speed_cmps = self._values.get(ADDR_AVG_SPEED.address)
         power = self._values.get(ADDR_POWER.address)
         calories = self._values.get(ADDR_CALORIES.address)
-        hours = self._values.get(ADDR_ELAPSED_HOURS.address, 0)
-        minutes = self._values.get(ADDR_ELAPSED_MINS.address, 0)
         seconds = self._values.get(ADDR_ELAPSED_SECS.address, 0)
+        minutes = self._values.get(ADDR_ELAPSED_MINS.address, 0)
+        hours = self._values.get(ADDR_ELAPSED_HOURS.address, 0)
 
         return RowingMetrics(
             timestamp=datetime.now(tz=timezone.utc),
             stroke_rate=stroke_rate_raw_to_spm(stroke_rate_raw) if stroke_rate_raw is not None else None,
             stroke_count=stroke_count,
             distance_m=float(distance_m) if distance_m is not None else None,
-            pace_s_per_500m=pace_raw_to_seconds_per_500m(pace_raw) if pace_raw is not None else None,
+            pace_s_per_500m=avg_speed_to_pace(avg_speed_cmps) if avg_speed_cmps is not None else None,
             power_watts=float(power) if power is not None else None,
             calories=calories,
             elapsed_seconds=elapsed_time_to_seconds(hours, minutes, seconds),
