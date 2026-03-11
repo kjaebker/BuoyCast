@@ -159,11 +159,9 @@ class TestFitGeneration:
         messages, _ = _decode_fit(path)
 
         session = messages["session_mesgs"][0]
-        # Distance in FIT is in cm, decoder may return m or cm
         dist = session.get("total_distance")
-        assert dist is not None
-        # Should be ~2000m (stored as cm in FIT, decoder may convert)
-        assert dist > 0
+        # Decoder returns meters; should exactly match the workout's total_distance_m
+        assert dist == 2000.0
 
     def test_activity_message_present(self, tmp_path):
         """Activity message should be present."""
@@ -172,3 +170,13 @@ class TestFitGeneration:
 
         activities = messages.get("activity_mesgs", [])
         assert len(activities) == 1
+
+    def test_timestamp_year_correct(self, tmp_path):
+        """Session timestamp year should match the workout start year (not 20 years off)."""
+        path = generate_fit(_workout(), _strokes(), output_dir=tmp_path)
+        messages, _ = _decode_fit(path)
+
+        session = messages["session_mesgs"][0]
+        ts = session.get("start_time") or session.get("timestamp")
+        assert ts is not None
+        assert ts.year == 2026

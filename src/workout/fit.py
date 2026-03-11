@@ -7,7 +7,7 @@ session summary, and per-stroke record messages with HR time series.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 from fit_tool.fit_file_builder import FitFileBuilder
@@ -30,13 +30,13 @@ from src.models import StrokeRecord, WorkoutRecord
 
 logger = logging.getLogger(__name__)
 
-# FIT epoch: Dec 31, 1989 00:00:00 UTC
-_FIT_EPOCH = datetime(1989, 12, 31, tzinfo=timezone.utc)
-
-
 def _to_fit_timestamp(dt: datetime) -> int:
-    """Convert datetime to FIT timestamp (ms since FIT epoch)."""
-    return int((dt - _FIT_EPOCH).total_seconds() * 1000)
+    """Convert datetime to milliseconds since Unix epoch.
+
+    fit_tool expects Unix milliseconds internally — it handles the conversion
+    to FIT binary timestamps (seconds since Dec 31, 1989) when writing.
+    """
+    return int(dt.timestamp() * 1000)
 
 
 def generate_fit(
@@ -93,8 +93,12 @@ def generate_fit(
         if stroke.power_watts is not None and stroke.power_watts > 0:
             record.power = int(stroke.power_watts)
 
-        # Distance in centimeters for FIT
-        record.distance = stroke.distance_m * 100
+        # Distance in meters — fit_tool handles the m→cm FIT scaling internally
+        record.distance = stroke.distance_m
+
+        # Speed in m/s — explicit field so Strava can render the speed chart
+        if stroke.pace_s_per_500m is not None and stroke.pace_s_per_500m > 0:
+            record.speed = 500.0 / stroke.pace_s_per_500m
 
         builder.add(record)
 
@@ -111,7 +115,7 @@ def generate_fit(
     lap.start_time = start_ts
     lap.total_elapsed_time = elapsed_ms
     lap.total_timer_time = elapsed_ms
-    lap.total_distance = workout.total_distance_m * 100
+    lap.total_distance = workout.total_distance_m
     if workout.avg_heart_rate is not None:
         lap.avg_heart_rate = workout.avg_heart_rate
     if workout.max_heart_rate is not None:
@@ -130,7 +134,7 @@ def generate_fit(
     session.start_time = start_ts
     session.total_elapsed_time = elapsed_ms
     session.total_timer_time = elapsed_ms
-    session.total_distance = workout.total_distance_m * 100
+    session.total_distance = workout.total_distance_m
     session.total_strokes = workout.total_strokes
     session.total_calories = workout.calories
     session.num_laps = 1
@@ -142,6 +146,8 @@ def generate_fit(
         session.avg_cadence = int(workout.avg_stroke_rate)
     if workout.avg_power_watts is not None:
         session.avg_power = int(workout.avg_power_watts)
+    if workout.avg_pace_s_per_500m is not None and workout.avg_pace_s_per_500m > 0:
+        session.avg_speed = 500.0 / workout.avg_pace_s_per_500m
     builder.add(session)
 
     # Activity message
