@@ -31,12 +31,9 @@ CMD_RESET = "RESET"  # Clear distance/time/stroke counters
 CMD_IV = "IV?"     # Request firmware/model version; S4 responds with IV{model}{ver}
 CMD_EXIT = "EXIT"  # Release USB mode so S4 can enter sleep
 
-# Memory read commands — format: "IRD{size}{addr3hex}"
-# size: S = single byte, D = double byte, T = triple byte
-CMD_IRD_PREFIX = "IRD"
-
-# Memory write commands — format: "IRS{size}{addr3hex}{value}"
-CMD_IRS_PREFIX = "IRS"
+# Memory read commands — format: "IR{size}{addr3hex}"
+# IRS = read single byte, IRD = read double byte, IRT = read triple byte
+CMD_IR_PREFIX = "IR"
 
 # ---------------------------------------------------------------------------
 # S4 → Host responses / spontaneous messages
@@ -138,8 +135,12 @@ POLL_ADDRESSES: list[MemoryLocation] = [
 # Command builders
 # ---------------------------------------------------------------------------
 def build_read_command(location: MemoryLocation) -> str:
-    """Build an IRD command string for a memory location (without line ending)."""
-    return f"{CMD_IRD_PREFIX}{location.size.value}{location.address}"
+    """Build an IR read command for a memory location (without line ending).
+
+    Format: IR{S|D|T}{addr3hex}
+      IRS = single byte read, IRD = double byte read, IRT = triple byte read
+    """
+    return f"{CMD_IR_PREFIX}{location.size.value}{location.address}"
 
 
 def build_handshake() -> str:
@@ -237,6 +238,16 @@ def avg_speed_to_pace(cmps: int) -> float:
     if cmps == 0:
         return 0.0
     return 50000.0 / cmps
+
+
+def bcd_decode(hex_value: int) -> int:
+    """Decode a BCD-encoded value that was parsed as hex.
+
+    Elapsed time fields (1E1, 1E2, 1E3) use decimal (BCD) encoding:
+    the S4 sends "30" for 30 seconds, not 0x30 (=48). After int("30", 16)=48,
+    this converts back: 48 → "30" → int("30", 10) = 30.
+    """
+    return int(f"{hex_value:02X}", 10)
 
 
 def elapsed_time_to_seconds(hours: int, minutes: int, seconds: int) -> int:

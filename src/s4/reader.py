@@ -30,6 +30,7 @@ from src.s4.protocol import (
     RESP_WR,
     ProtocolError,
     avg_speed_to_pace,
+    bcd_decode,
     build_exit,
     build_handshake,
     build_iv_query,
@@ -301,9 +302,10 @@ class S4Reader:
         avg_speed_cmps = self._values.get(ADDR_AVG_SPEED.address)
         power = self._values.get(ADDR_POWER.address)
         calories = self._values.get(ADDR_CALORIES.address)
-        seconds = self._values.get(ADDR_ELAPSED_SECS.address, 0)
-        minutes = self._values.get(ADDR_ELAPSED_MINS.address, 0)
-        hours = self._values.get(ADDR_ELAPSED_HOURS.address, 0)
+        # Elapsed time fields use BCD encoding — decode before using
+        seconds = bcd_decode(self._values.get(ADDR_ELAPSED_SECS.address, 0))
+        minutes = bcd_decode(self._values.get(ADDR_ELAPSED_MINS.address, 0))
+        hours = bcd_decode(self._values.get(ADDR_ELAPSED_HOURS.address, 0))
 
         return RowingMetrics(
             timestamp=datetime.now(tz=timezone.utc),
