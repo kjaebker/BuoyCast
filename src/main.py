@@ -102,8 +102,8 @@ async def run(settings: Settings) -> None:
 
             from src.ble.tickr import TickrReader
 
-            ble_client = BleakClient(settings.heart_rate.device_mac)
-            tickr_reader = TickrReader(ble_client, event_bus, settings.heart_rate)
+            ble_factory = lambda: BleakClient(settings.heart_rate.device_mac)
+            tickr_reader = TickrReader(ble_factory, event_bus, settings.heart_rate)
             await tickr_reader.start()
             components.append(tickr_reader)
         except ImportError:
