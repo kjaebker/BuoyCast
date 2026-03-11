@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import Protocol
+from typing import Callable, Protocol
 
 from src.config import HeartRateSettings
 from src.events import EventBus, EventType
@@ -106,7 +106,7 @@ class TickrReader:
 
     def __init__(
         self,
-        ble_client: BLEClient,
+        ble_client: BLEClient | Callable[[], BLEClient],
         event_bus: EventBus,
         settings: HeartRateSettings | None = None,
         *,
@@ -114,7 +114,12 @@ class TickrReader:
         backoff_max_s: float = BACKOFF_MAX_S,
         poll_interval_s: float = 0.5,
     ) -> None:
-        self._ble = ble_client
+        if callable(ble_client) and not hasattr(ble_client, "connect"):
+            self._ble_factory: Callable[[], BLEClient] | None = ble_client
+            self._ble: BLEClient = ble_client()
+        else:
+            self._ble_factory = None
+            self._ble = ble_client  # type: ignore[assignment]
         self._bus = event_bus
         self._settings = settings or HeartRateSettings()
         self._running = False
@@ -157,6 +162,10 @@ class TickrReader:
 
         while self._running:
             try:
+                # Recreate the BLE client each attempt — on Linux/BlueZ a failed
+                # connection leaves the client in a broken state that can't be reused.
+                if self._ble_factory is not None:
+                    self._ble = self._ble_factory()
                 await self._connect()
                 backoff = self._backoff_base_s  # Reset on successful connection
 
