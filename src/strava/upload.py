@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime
 from pathlib import Path
 
 import httpx
@@ -76,7 +77,7 @@ async def upload_workout(
 
         # Upload
         upload_id = await _upload_fit(
-            client, tokens.access_token, Path(fit_path), workout.id
+            client, tokens.access_token, Path(fit_path), workout.id, workout.started_at
         )
         if upload_id is None:
             await _set_failed(db, workout_id, "Upload request failed")
@@ -117,11 +118,29 @@ async def upload_workout(
             await client.aclose()
 
 
+def _activity_title(started_at: datetime) -> str:
+    """Generate a time-of-day activity title based on local hour."""
+    hour = started_at.hour  # UTC hour — close enough for naming
+    if 4 <= hour < 9:
+        return "Early Morning Row"
+    elif 9 <= hour < 12:
+        return "Morning Row"
+    elif 12 <= hour < 14:
+        return "Lunch Row"
+    elif 14 <= hour < 17:
+        return "Afternoon Row"
+    elif 17 <= hour < 21:
+        return "Evening Row"
+    else:
+        return "Night Row"
+
+
 async def _upload_fit(
     client: httpx.AsyncClient,
     access_token: str,
     fit_path: Path,
     workout_id: str,
+    started_at: datetime,
 ) -> int | None:
     """POST FIT file to Strava. Returns upload_id or None on failure."""
     # Read file bytes off the event loop so we don't block on I/O.
@@ -134,7 +153,7 @@ async def _upload_fit(
         data={
             "sport_type": "Rowing",
             "data_type": "fit",
-            "name": f"BuoyCast Workout {workout_id}",
+            "name": _activity_title(started_at),
         },
     )
     resp.raise_for_status()
