@@ -4,6 +4,7 @@ The S4 monitor communicates via ASCII text over USB CDC serial at 19200 baud.
 Each command/response is a string terminated by \\r\\n.
 
 Reference: WaterRower S4/S5 USB Protocol Specification.
+Verified against: pirowflo (inonoob), waterrower-core (tbressler), WaterRowerLinkPlus.
 """
 
 from __future__ import annotations
@@ -25,8 +26,10 @@ LINE_ENDING = b"\r\n"
 # ---------------------------------------------------------------------------
 # Host → S4 commands (ASCII strings, sent with LINE_ENDING appended)
 # ---------------------------------------------------------------------------
-CMD_USB = "USB"  # Initiate USB communication; S4 responds with _WR_
+CMD_USB = "USB"    # Initiate USB communication; S4 responds with _WR_
 CMD_RESET = "RESET"  # Clear distance/time/stroke counters
+CMD_IV = "IV?"     # Request firmware/model version; S4 responds with IV{model}{ver}
+CMD_EXIT = "EXIT"  # Release USB mode so S4 can enter sleep
 
 # Memory read commands — format: "IRD{size}{addr3hex}"
 # size: S = single byte, D = double byte, T = triple byte
@@ -35,21 +38,15 @@ CMD_IRD_PREFIX = "IRD"
 # Memory write commands — format: "IRS{size}{addr3hex}{value}"
 CMD_IRS_PREFIX = "IRS"
 
-# Exit USB mode
-CMD_EXIT = "EXIT"
-
-# Request firmware version
-CMD_IV = "IV?"
-
 # ---------------------------------------------------------------------------
 # S4 → Host responses / spontaneous messages
 # ---------------------------------------------------------------------------
-RESP_WR = "_WR_"  # S4 acknowledge of USB command
-RESP_IV = "IV"  # Firmware version prefix
-RESP_SS = "SS"  # Stroke Start — pushed when a new stroke begins
-RESP_SE = "SE"  # Stroke End — pushed at the end of a stroke
-RESP_PING = "PING"  # Keepalive, sent periodically by S4
-RESP_OK = "OK"  # General acknowledgement
+RESP_WR = "_WR_"    # S4 acknowledge of USB command
+RESP_IV = "IV"      # Firmware version prefix
+RESP_SS = "SS"      # Stroke Start — pushed when a new stroke begins
+RESP_SE = "SE"      # Stroke End — pushed at the end of a stroke
+RESP_PING = "PING"  # Keepalive, sent ~1/s when idle
+RESP_OK = "OK"      # General acknowledgement
 RESP_ERROR = "ERROR"  # Error response
 
 # Individual Data response prefixes
@@ -85,7 +82,8 @@ RESPONSE_PREFIX: dict[ReadSize, str] = {
 
 
 # ---------------------------------------------------------------------------
-# S4 memory map — key addresses (3-hex-digit format)
+# S4 memory map — verified addresses (3-hex-digit format)
+# Sources: pirowflo waterrowerinterface.py, waterrower-core MemoryLocation.java
 # ---------------------------------------------------------------------------
 @dataclass(frozen=True)
 class MemoryLocation:
@@ -96,45 +94,43 @@ class MemoryLocation:
     label: str
 
 
-# Stroke / speed
-ADDR_STROKE_RATE = MemoryLocation("140", ReadSize.DOUBLE, "stroke_rate")
-ADDR_STROKE_COUNT = MemoryLocation("142", ReadSize.DOUBLE, "stroke_count")
+# Stroke rate: raw value, SPM = raw × 2
+ADDR_STROKE_RATE = MemoryLocation("1A9", ReadSize.SINGLE, "stroke_rate")
 
-# Distance
-ADDR_DISTANCE_M = MemoryLocation("057", ReadSize.DOUBLE, "distance_meters")
-ADDR_DISTANCE_CM = MemoryLocation("054", ReadSize.DOUBLE, "distance_cm")
+# Total stroke count
+ADDR_STROKE_COUNT = MemoryLocation("140", ReadSize.DOUBLE, "stroke_count")
 
-# Pace
-ADDR_PACE = MemoryLocation("1A5", ReadSize.DOUBLE, "pace_seconds_per_500m")
+# Distance in whole meters
+ADDR_DISTANCE_M = MemoryLocation("055", ReadSize.DOUBLE, "distance_meters")
 
-# Power
-ADDR_POWER = MemoryLocation("148", ReadSize.DOUBLE, "power_watts")
+# Average speed in cm/s — used to derive 500m pace
+ADDR_AVG_SPEED = MemoryLocation("14A", ReadSize.DOUBLE, "avg_speed_cmps")
 
-# Calories
-ADDR_CALORIES = MemoryLocation("088", ReadSize.TRIPLE, "calories")
+# Instantaneous power in watts
+ADDR_POWER = MemoryLocation("088", ReadSize.DOUBLE, "power_watts")
 
-# Elapsed time
-ADDR_ELAPSED_HOURS = MemoryLocation("1E1", ReadSize.SINGLE, "elapsed_hours")
+# Total calories (kcal)
+ADDR_CALORIES = MemoryLocation("08A", ReadSize.TRIPLE, "calories")
+
+# Elapsed time — each is a single byte (0–59 for s/m, 0–99 for h)
+ADDR_ELAPSED_SECS = MemoryLocation("1E1", ReadSize.SINGLE, "elapsed_seconds")
 ADDR_ELAPSED_MINS = MemoryLocation("1E2", ReadSize.SINGLE, "elapsed_minutes")
-ADDR_ELAPSED_SECS = MemoryLocation("1E3", ReadSize.SINGLE, "elapsed_seconds")
+ADDR_ELAPSED_HOURS = MemoryLocation("1E3", ReadSize.SINGLE, "elapsed_hours")
 
-# Heart rate (from S4 onboard — not used when TICKR is connected)
+# Heart rate from S4 onboard sensor (not used when TICKR is connected)
 ADDR_HEART_RATE = MemoryLocation("1A0", ReadSize.DOUBLE, "heart_rate_bpm")
-
-# Drive length
-ADDR_DRIVE_LENGTH = MemoryLocation("142", ReadSize.DOUBLE, "drive_length")
 
 # All addresses to poll during normal operation
 POLL_ADDRESSES: list[MemoryLocation] = [
     ADDR_STROKE_RATE,
     ADDR_STROKE_COUNT,
     ADDR_DISTANCE_M,
-    ADDR_PACE,
+    ADDR_AVG_SPEED,
     ADDR_POWER,
     ADDR_CALORIES,
-    ADDR_ELAPSED_HOURS,
-    ADDR_ELAPSED_MINS,
     ADDR_ELAPSED_SECS,
+    ADDR_ELAPSED_MINS,
+    ADDR_ELAPSED_HOURS,
 ]
 
 
@@ -151,9 +147,9 @@ def build_handshake() -> str:
     return CMD_USB
 
 
-def build_reset() -> str:
-    """Build the reset/clear-memory command."""
-    return CMD_RESET
+def build_iv_query() -> str:
+    """Build the firmware version query command."""
+    return CMD_IV
 
 
 def build_exit() -> str:
@@ -191,7 +187,7 @@ def parse_response(line: str) -> tuple[str, str | None, int | None]:
     for size, prefix in RESPONSE_PREFIX.items():
         if line.startswith(prefix):
             expected_hex = VALUE_HEX_DIGITS[size]
-            payload = line[len(prefix) :]
+            payload = line[len(prefix):]
             # Payload format: {addr3hex}{valueNhex}
             expected_len = 3 + expected_hex
             if len(payload) != expected_len:
@@ -217,64 +213,30 @@ def parse_response(line: str) -> tuple[str, str | None, int | None]:
     if line.startswith(RESP_IV):
         return RESP_IV, None, None
 
-    # Unknown response — don't crash, return as-is
+    # Unknown response (e.g. pulse count "P02", undocumented stroke messages) — discard
     return line, None, None
 
 
 # ---------------------------------------------------------------------------
 # Value conversion utilities
 # ---------------------------------------------------------------------------
-def parse_single_byte(value: int) -> int:
-    """Parse a single-byte (0–255) integer value."""
-    if not 0 <= value <= 0xFF:
-        raise ProtocolError(f"Single byte value out of range: {value}")
-    return value
-
-
-def parse_double_byte(value: int) -> int:
-    """Parse a double-byte (0–65535) integer value."""
-    if not 0 <= value <= 0xFFFF:
-        raise ProtocolError(f"Double byte value out of range: {value}")
-    return value
-
-
-def parse_triple_byte(value: int) -> int:
-    """Parse a triple-byte (0–16777215) integer value."""
-    if not 0 <= value <= 0xFFFFFF:
-        raise ProtocolError(f"Triple byte value out of range: {value}")
-    return value
-
-
 def stroke_rate_raw_to_spm(raw: int) -> float:
-    """Convert raw stroke rate value to strokes per minute.
+    """Convert raw stroke rate (address 1A9) to strokes per minute.
 
-    The S4 reports stroke rate as SPM × 2 (resolution 0.5 SPM).
+    The S4 stores stroke rate as SPM / 2, so SPM = raw × 2.
     """
-    return raw / 2.0
+    return float(raw * 2)
 
 
-def pace_raw_to_seconds_per_500m(raw: int) -> float:
-    """Convert raw pace value to seconds per 500m.
+def avg_speed_to_pace(cmps: int) -> float:
+    """Convert average speed (cm/s, address 14A) to seconds per 500m.
 
-    The S4 reports pace in units of seconds/500m × 10 (0.1s resolution).
-    A raw value of 0 means no pace data (not rowing).
+    pace = 500m / speed(m/s) = 50000cm / speed(cm/s)
+    Returns 0.0 when speed is zero (not rowing).
     """
-    if raw == 0:
+    if cmps == 0:
         return 0.0
-    return raw / 10.0
-
-
-def assemble_distance(meters: int, cm: int = 0) -> float:
-    """Assemble total distance from meter and centimeter readings.
-
-    Args:
-        meters: distance in whole meters from ADDR_DISTANCE_M
-        cm: optional centimeters from ADDR_DISTANCE_CM
-
-    Returns:
-        Total distance in meters as a float.
-    """
-    return meters + (cm / 100.0)
+    return 50000.0 / cmps
 
 
 def elapsed_time_to_seconds(hours: int, minutes: int, seconds: int) -> int:

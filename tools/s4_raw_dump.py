@@ -1,10 +1,9 @@
-"""Raw S4 serial dump — sends USB handshake then prints every line received.
+"""Raw S4 serial dump — sends USB handshake, listens, then probes IRD commands.
 
 Run on the Pi:
     python tools/s4_raw_dump.py [port]
 
 Default port: /dev/ttyACM0
-Rows for ~60 seconds, printing every byte as received with timestamps.
 """
 
 import sys
@@ -18,27 +17,43 @@ TIMEOUT = 0.5
 print(f"Opening {PORT} at {BAUD} baud...")
 ser = serial.Serial(PORT, baudrate=BAUD, timeout=TIMEOUT)
 ser.reset_input_buffer()
+t0 = time.time()
+
+def ts():
+    return time.time() - t0
 
 def send(cmd):
     line = (cmd + "\r\n").encode("ascii")
-    print(f"  >> {cmd!r}")
+    print(f"[{ts():6.2f}] >> {cmd!r}")
     ser.write(line)
 
-print("Sending USB handshake...")
-send("USB")
+def read_all(duration):
+    end = time.time() + duration
+    while time.time() < end:
+        raw = ser.readline()
+        if raw:
+            try:
+                decoded = raw.decode("ascii", errors="replace").strip()
+            except Exception:
+                decoded = repr(raw)
+            print(f"[{ts():6.2f}] << {decoded!r}  (hex: {raw.hex()})")
+        else:
+            print(f"[{ts():6.2f}] (no data)")
 
-start = time.time()
-while time.time() - start < 60:
-    raw = ser.readline()
-    ts = time.time() - start
-    if raw:
-        try:
-            decoded = raw.decode("ascii", errors="replace").strip()
-        except Exception as e:
-            decoded = repr(raw)
-        print(f"[{ts:6.2f}] << {decoded!r}  (raw: {raw.hex()})")
-    else:
-        print(f"[{ts:6.2f}] (timeout / no data)")
+# Step 1: handshake
+send("USB")
+print("--- listening 5s after USB ---")
+read_all(5)
+
+# Step 2: probe IRD commands
+print("--- probing IRD commands ---")
+for cmd in ["IRDS000", "IRDS001", "IRDS1E3", "IRDD1E3", "IRDD140", "IRDD057"]:
+    send(cmd)
+    read_all(1.5)
+
+# Step 3: listen to spontaneous traffic
+print("--- listening 30s (row now!) ---")
+read_all(30)
 
 ser.close()
 print("Done.")
