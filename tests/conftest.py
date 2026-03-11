@@ -9,12 +9,12 @@ from typing import Any
 import pytest
 
 from src.s4.protocol import (
+    ADDR_AVG_SPEED,
     ADDR_CALORIES,
     ADDR_DISTANCE_M,
     ADDR_ELAPSED_HOURS,
     ADDR_ELAPSED_MINS,
     ADDR_ELAPSED_SECS,
-    ADDR_PACE,
     ADDR_POWER,
     ADDR_STROKE_COUNT,
     ADDR_STROKE_RATE,
@@ -67,6 +67,14 @@ class MockSerial:
     async def close(self) -> None:
         self._is_open = False
 
+    async def flush_input(self) -> None:
+        """Discard any queued responses (simulates flushing serial input buffer)."""
+        while not self._response_queue.empty():
+            try:
+                self._response_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+
     async def write(self, data: bytes) -> None:
         if not self._is_open:
             raise OSError("Port not open")
@@ -79,14 +87,19 @@ class MockSerial:
             self._handshake_done = True
             return
 
-        # Handle RESET
-        if text == "RESET":
+        # Handle IV? firmware query
+        if text == "IV?":
+            await self._response_queue.put(b"IV40210" + LINE_ENDING)
             return
 
-        # Handle IRD commands: IRD{size}{addr}
-        if text.startswith("IRD") and len(text) >= 7:
-            size_char = text[3]
-            addr = text[4:7]
+        # Handle RESET and EXIT — no response needed
+        if text in ("RESET", "EXIT"):
+            return
+
+        # Handle IR read commands: IR{size}{addr3hex} (e.g. IRS1A9, IRD055, IRT08A)
+        if text.startswith("IR") and len(text) >= 6:
+            size_char = text[2]
+            addr = text[3:6]
             await self._generate_read_response(size_char, addr)
 
     async def readline(self) -> bytes:
@@ -145,15 +158,20 @@ class MockSerial:
         elapsed_seconds: int = 0,
     ) -> None:
         """Configure memory for steady-state rowing data."""
-        self.set_memory(ADDR_STROKE_RATE, int(stroke_rate_spm * 2))
+        # S4 address 1A9 stores SPM directly (confirmed with hardware)
+        self.set_memory(ADDR_STROKE_RATE, int(stroke_rate_spm))
         self.set_memory(ADDR_STROKE_COUNT, stroke_count)
         self.set_memory(ADDR_DISTANCE_M, distance_m)
-        self.set_memory(ADDR_PACE, int(pace_s_per_500m * 10))
+        # Address 14A stores avg speed in cm/s; convert from pace (s/500m)
+        avg_speed_cmps = int(50000 / pace_s_per_500m) if pace_s_per_500m > 0 else 0
+        self.set_memory(ADDR_AVG_SPEED, avg_speed_cmps)
         self.set_memory(ADDR_POWER, power_watts)
-        self.set_memory(ADDR_CALORIES, calories)
-        self.set_memory(ADDR_ELAPSED_HOURS, elapsed_hours)
-        self.set_memory(ADDR_ELAPSED_MINS, elapsed_minutes)
-        self.set_memory(ADDR_ELAPSED_SECS, elapsed_seconds)
+        self.set_memory(ADDR_CALORIES, calories * 1000)  # stored as millikcal
+        # Elapsed time is BCD-encoded on the real S4 — store BCD values so
+        # bcd_decode() in the reader produces the right decimal result.
+        self.set_memory(ADDR_ELAPSED_HOURS, int(f"{elapsed_hours:02d}", 16))
+        self.set_memory(ADDR_ELAPSED_MINS, int(f"{elapsed_minutes:02d}", 16))
+        self.set_memory(ADDR_ELAPSED_SECS, int(f"{elapsed_seconds:02d}", 16))
 
     def set_idle(self) -> None:
         """Configure memory for idle S4 (no strokes)."""

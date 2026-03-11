@@ -103,6 +103,13 @@ async def end_workout(request: Request):
     state = _get_state(request)
     sm = state.state_machine
     new_state = await sm.end()
+
+    # Reset S4 counters so the monitor shows zeros for the next session
+    reader = state.s4_reader
+    if reader is not None:
+        import asyncio
+        asyncio.create_task(reader.send_reset())
+
     return {"state": new_state.value}
 
 
@@ -127,12 +134,26 @@ async def upload_workout_endpoint(request: Request, workout_id: str):
         return JSONResponse(status_code=404, content={"detail": "Workout not found"})
 
     auth = state.strava_auth
-    if auth is not None:
-        from src.strava.upload import upload_workout
+    if auth is None:
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Strava not configured"},
+        )
 
-        import asyncio
+    from src.strava.upload import upload_workout
+    import asyncio
+    import logging
 
-        asyncio.create_task(upload_workout(workout_id, state.db, auth))
+    _logger = logging.getLogger(__name__)
+
+    async def _run_upload():
+        ok = await upload_workout(workout_id, state.db, auth)
+        if ok:
+            _logger.info("Strava upload task completed for workout %s", workout_id)
+        else:
+            _logger.warning("Strava upload task failed for workout %s", workout_id)
+
+    asyncio.create_task(_run_upload())
 
     return JSONResponse(
         status_code=202,

@@ -30,16 +30,36 @@ All work is tracked in `TASKS.md`. Follow this protocol every time.
 
 ## Workflow
 - Commit messages follow conventional commits: `feat:`, `fix:`, `chore:`, `test:`, etc.
-- Run the full test suite before committing: `.venv/Scripts/python.exe -m pytest tests/ -v`
+- Run the full test suite before committing: `cd "C:/Users/minipc/src/GitHub/BuoyCast" && .venv/Scripts/python.exe -m pytest tests/ -q`
 - Follow the phases in `docs/implementation-plan.md` — do not skip ahead
 
 ---
 
 ## Build/Run Commands
-- Python tests: `.venv/Scripts/python.exe -m pytest tests/ -v`
-- Dashboard build: `export PATH="/c/Program Files/nodejs:$PATH" && npm run build` (from dashboard/)
-- Dashboard type-check: `npx tsc --noEmit` (from dashboard/)
-- Install Python deps: `.venv/Scripts/python.exe -m pip install -e ".[dev]"`
+
+### Python (Windows — MINGW64/Git Bash)
+The `.venv` may not exist after a fresh clone — create it first:
+```bash
+/c/Python314/python -m venv .venv
+.venv/Scripts/python.exe -m pip install -e ".[dev]"
+```
+Then run tests (always from `C:/Users/minipc/src/GitHub/BuoyCast`):
+```bash
+cd "C:/Users/minipc/src/GitHub/BuoyCast" && .venv/Scripts/python.exe -m pytest tests/ -q
+```
+Verbose: `.venv/Scripts/python.exe -m pytest tests/ -v`
+
+### Dashboard (always run from the `dashboard/` directory)
+Node modules may need installing after clone:
+```bash
+export PATH="/c/Program Files/nodejs:$PATH" && npm install
+```
+Type-check: `node_modules/.bin/tsc -b`
+Build: `node_modules/.bin/vite build`  (or `npm run build` once tsc is on PATH)
+
+### Important
+- `.venv` is gitignored — recreate it with the commands above if missing
+- `npm run build` fails because `tsc` isn't on PATH in MINGW — use `node_modules/.bin/tsc -b && node_modules/.bin/vite build` instead
 
 ---
 

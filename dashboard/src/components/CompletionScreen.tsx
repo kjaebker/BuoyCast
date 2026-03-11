@@ -5,7 +5,7 @@
  * and Maybe Later to dismiss.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Timer,
   Ruler,
@@ -15,6 +15,8 @@ import {
   Flame,
   Heart,
   Upload,
+  CheckCircle,
+  AlertCircle,
   X,
 } from "lucide-react";
 import {
@@ -81,11 +83,14 @@ function Stat({ icon, label, value, unit, tone = "slate", index = 0 }: StatProps
   );
 }
 
+type UploadState = "idle" | "uploading" | "polling" | "done" | "failed";
+
 export function CompletionScreen({ onDismiss }: CompletionScreenProps) {
   const [workouts, setWorkouts] = useState<WorkoutRecord[]>([]);
   const [strokes, setStrokes] = useState<StrokeRecord[]>([]);
-  const [uploading, setUploading] = useState(false);
-  const [uploadDone, setUploadDone] = useState(false);
+  const [uploadState, setUploadState] = useState<UploadState>("idle");
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     api.listWorkouts(1, 0).then(setWorkouts).catch(() => {});
@@ -99,17 +104,47 @@ export function CompletionScreen({ onDismiss }: CompletionScreenProps) {
     }
   }, [workout]);
 
+  // Poll upload status after queuing
+  useEffect(() => {
+    if (uploadState !== "polling" || !workout) return;
+
+    pollRef.current = setInterval(async () => {
+      try {
+        const w = await api.getWorkout(workout.id);
+        if (w.strava_upload_status === "UPLOADED") {
+          clearInterval(pollRef.current!);
+          setUploadState("done");
+        } else if (w.strava_upload_status === "FAILED") {
+          clearInterval(pollRef.current!);
+          setUploadError(w.strava_error ?? "Upload failed");
+          setUploadState("failed");
+        }
+      } catch {
+        // Keep polling
+      }
+    }, 2000);
+
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [uploadState, workout]);
+
   const handleUpload = async () => {
     if (!workout) return;
-    setUploading(true);
+    setUploadState("uploading");
+    setUploadError(null);
     try {
       await api.uploadWorkout(workout.id);
-      setUploadDone(true);
-    } catch {
-      // Error handled by API
-    } finally {
-      setUploading(false);
+      setUploadState("polling");
+    } catch (e) {
+      setUploadError(e instanceof Error ? e.message : "Upload request failed");
+      setUploadState("failed");
     }
+  };
+
+  const handleDone = async () => {
+    await api.resetWorkout().catch(() => {});
+    onDismiss();
   };
 
   const handleSkip = async () => {
@@ -246,34 +281,28 @@ export function CompletionScreen({ onDismiss }: CompletionScreenProps) {
         )}
 
         <div className="mt-6 space-y-3">
-          {uploadDone ? (
+          {uploadState === "done" ? (
             <div
-              className="flex items-center justify-center gap-3 rounded-2xl border border-[color-mix(in_oklch,var(--color-secondary)_32%,transparent)] bg-[color-mix(in_oklch,var(--color-secondary)_16%,transparent)] px-4 py-4"
+              className="flex items-center gap-3 rounded-2xl border border-[color-mix(in_oklch,var(--color-secondary)_32%,transparent)] bg-[color-mix(in_oklch,var(--color-secondary)_16%,transparent)] px-4 py-4"
               style={{ animation: "success-pop 0.4s cubic-bezier(0.34,1.3,0.64,1) forwards" }}
             >
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[color-mix(in_oklch,var(--color-secondary)_30%,transparent)]">
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 20 20"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="text-secondary-foreground"
-                >
-                  <polyline
-                    points="4,10 8,14 16,6"
-                    strokeDasharray="28"
-                    strokeDashoffset="0"
-                    style={{ animation: "check-draw 0.35s ease-out 0.15s both" }}
-                  />
-                </svg>
-              </span>
+              <CheckCircle className="h-9 w-9 shrink-0 text-secondary-foreground" />
               <div>
-                <div className="font-semibold text-secondary-foreground">Queued for Strava</div>
-                <div className="text-xs text-secondary-foreground/70">Should appear on your profile shortly.</div>
+                <div className="font-semibold text-secondary-foreground">Uploaded to Strava</div>
+                <div className="text-xs text-secondary-foreground/70">Activity is on your profile.</div>
+              </div>
+            </div>
+          ) : uploadState === "polling" ? (
+            <div className="flex items-center gap-3 rounded-2xl border border-[color-mix(in_oklch,var(--color-secondary)_22%,transparent)] bg-[color-mix(in_oklch,var(--color-secondary)_10%,transparent)] px-4 py-4">
+              <div className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-secondary-foreground/30 border-t-secondary-foreground" />
+              <div className="text-sm font-medium text-secondary-foreground/80">Processing on Strava...</div>
+            </div>
+          ) : uploadState === "failed" ? (
+            <div className="flex items-center gap-3 rounded-2xl border border-destructive/32 bg-destructive/10 px-4 py-4">
+              <AlertCircle className="h-6 w-6 shrink-0 text-destructive" />
+              <div>
+                <div className="font-semibold text-destructive-foreground">Upload failed</div>
+                {uploadError && <div className="text-xs text-destructive-foreground/70">{uploadError}</div>}
               </div>
             </div>
           ) : (
@@ -281,21 +310,42 @@ export function CompletionScreen({ onDismiss }: CompletionScreenProps) {
               size="lg"
               className="h-14 w-full text-lg shadow-[0_16px_32px_-20px_color-mix(in_oklch,var(--color-primary)_55%,black)]"
               onClick={handleUpload}
-              disabled={uploading}
+              disabled={uploadState === "uploading"}
             >
               <Upload className="mr-2 h-5 w-5" />
-              {uploading ? "Uploading..." : "Upload to Strava"}
+              {uploadState === "uploading" ? "Uploading..." : "Upload to Strava"}
             </Button>
           )}
-          <Button
-            size="lg"
-            variant="ghost"
-            className="h-12 w-full rounded-2xl border border-border/80 bg-card/55"
-            onClick={handleSkip}
-          >
-            <X className="mr-2 h-4 w-4" />
-            Maybe Later
-          </Button>
+
+          {uploadState === "done" ? (
+            <Button
+              size="lg"
+              className="h-14 w-full text-lg"
+              onClick={handleDone}
+            >
+              Done
+            </Button>
+          ) : (
+            <Button
+              size="lg"
+              variant="ghost"
+              className="h-12 w-full rounded-2xl border border-border/80 bg-card/55"
+              onClick={handleSkip}
+              disabled={uploadState === "uploading" || uploadState === "polling"}
+            >
+              {uploadState === "failed" ? (
+                <>
+                  <X className="mr-2 h-4 w-4" />
+                  Skip Strava
+                </>
+              ) : (
+                <>
+                  <X className="mr-2 h-4 w-4" />
+                  Maybe Later
+                </>
+              )}
+            </Button>
+          )}
         </div>
       </div>
     </div>

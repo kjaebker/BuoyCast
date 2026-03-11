@@ -139,7 +139,14 @@ async def _upload_fit(
     )
     resp.raise_for_status()
     data = resp.json()
-    return data.get("id")
+    upload_id = data.get("id")
+    logger.info(
+        "Strava upload POST response: upload_id=%s status=%r error=%r",
+        upload_id,
+        data.get("status"),
+        data.get("error"),
+    )
+    return upload_id
 
 
 async def _poll_upload_status(
@@ -164,6 +171,14 @@ async def _poll_upload_status(
         status = data.get("status")
         activity_id = data.get("activity_id")
         error = data.get("error")
+
+        logger.debug(
+            "Strava upload poll: upload_id=%s status=%r activity_id=%s error=%r",
+            upload_id,
+            status,
+            activity_id,
+            error,
+        )
 
         if activity_id is not None:
             return activity_id

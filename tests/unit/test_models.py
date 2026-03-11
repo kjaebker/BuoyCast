@@ -60,8 +60,8 @@ class TestRowingMetrics:
         assert m.rr_intervals_ms == [800, 750]
 
     def test_stroke_rate_too_high(self):
-        with pytest.raises(ValidationError, match="less than or equal to 60"):
-            RowingMetrics(timestamp=NOW, stroke_rate=61)
+        with pytest.raises(ValidationError, match="less than or equal to 100"):
+            RowingMetrics(timestamp=NOW, stroke_rate=101)
 
     def test_stroke_rate_negative(self):
         with pytest.raises(ValidationError, match="greater than or equal to 0"):
@@ -129,7 +129,7 @@ class TestStrokeRecord:
 
     def test_stroke_rate_bounds(self):
         with pytest.raises(ValidationError):
-            StrokeRecord(workout_id="x", ts=NOW, distance_m=0, stroke_rate=61)
+            StrokeRecord(workout_id="x", ts=NOW, distance_m=0, stroke_rate=101)
 
     def test_negative_distance(self):
         with pytest.raises(ValidationError):
