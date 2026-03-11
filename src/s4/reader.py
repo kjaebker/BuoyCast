@@ -197,8 +197,14 @@ class S4Reader:
             raise ProtocolError("No _WR_ handshake response from S4")
 
         # RESET primes the S4 memory for IRD polling — required before reads work
+        # Brief pause to let the S4 fully enter USB mode before sending RESET
+        await asyncio.sleep(0.5)
+
         logger.debug("S4 handshake: sending RESET")
         await self._send(build_reset())
+
+        # Wait for the S4 to finish processing RESET before IRD polling starts
+        await asyncio.sleep(1.0)
 
         # Drain any messages the S4 sends after RESET before we start polling
         for _ in range(6):
