@@ -98,11 +98,23 @@ async def run(settings: Settings) -> None:
     tickr_reader = None
     if settings.heart_rate.enabled and settings.heart_rate.device_mac:
         try:
-            from bleak import BleakClient
+            from bleak import BleakClient, BleakScanner
 
             from src.ble.tickr import TickrReader
 
-            ble_factory = lambda: BleakClient(settings.heart_rate.device_mac)
+            _mac = settings.heart_rate.device_mac
+
+            async def ble_factory() -> BleakClient:
+                """Scan for TICKR before connecting — required on Linux/BlueZ to
+                populate the device cache, otherwise connect raises DeviceNotFound."""
+                logger.debug("TICKR: scanning for %s (timeout=10s)...", _mac)
+                device = await BleakScanner.find_device_by_address(_mac, timeout=10.0)
+                if device is not None:
+                    logger.debug("TICKR: found via scan, creating client")
+                    return BleakClient(device)
+                logger.warning("TICKR: %s not found in BLE scan — trying direct connect", _mac)
+                return BleakClient(_mac)
+
             tickr_reader = TickrReader(ble_factory, event_bus, settings.heart_rate)
             await tickr_reader.start()
             components.append(tickr_reader)
