@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections import deque
 from datetime import datetime, timezone
 from typing import Protocol
 
@@ -110,6 +111,9 @@ class S4Reader:
 
         # Latest polled values (accumulated across poll cycles)
         self._values: dict[str, int] = {}
+
+        # Rolling power buffer — 20 samples at 4 Hz ≈ 5 seconds
+        self._power_buffer: deque[float] = deque(maxlen=20)
 
     @property
     def connected(self) -> bool:
@@ -215,6 +219,7 @@ class S4Reader:
 
         self._connected = True
         self._values.clear()
+        self._power_buffer.clear()
         await self._bus.emit(EventType.S4_CONNECTED)
         logger.info("S4 connected")
 
@@ -300,7 +305,10 @@ class S4Reader:
         stroke_count = self._values.get(ADDR_STROKE_COUNT.address)
         distance_m = self._values.get(ADDR_DISTANCE_M.address)
         avg_speed_cmps = self._values.get(ADDR_AVG_SPEED.address)
-        power = self._values.get(ADDR_POWER.address)
+        power_raw = self._values.get(ADDR_POWER.address)
+        if power_raw is not None and power_raw > 0:
+            self._power_buffer.append(float(power_raw))
+        power = sum(self._power_buffer) / len(self._power_buffer) if self._power_buffer else None
         calories = self._values.get(ADDR_CALORIES.address)
         # Elapsed time fields use BCD encoding — decode before using
         seconds = bcd_decode(self._values.get(ADDR_ELAPSED_SECS.address, 0))
@@ -313,7 +321,7 @@ class S4Reader:
             stroke_count=stroke_count,
             distance_m=float(distance_m) if distance_m is not None else None,
             pace_s_per_500m=avg_speed_to_pace(avg_speed_cmps) if avg_speed_cmps is not None else None,
-            power_watts=float(power) if power is not None else None,
+            power_watts=power,
             calories=int(calories / 1000) if calories is not None else None,
             elapsed_seconds=elapsed_time_to_seconds(hours, minutes, seconds),
         )
