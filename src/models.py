@@ -31,7 +31,7 @@ class RowingMetrics(BaseModel):
 
     timestamp: datetime
     # S4 data
-    stroke_rate: float | None = Field(None, ge=0, le=60)
+    stroke_rate: float | None = Field(None, ge=0, le=100)
     stroke_count: int | None = Field(None, ge=0)
     distance_m: float | None = Field(None, ge=0)
     pace_s_per_500m: float | None = Field(None, ge=0)
@@ -58,7 +58,7 @@ class StrokeRecord(BaseModel):
     workout_id: str
     ts: datetime
     distance_m: float = Field(ge=0)
-    stroke_rate: float = Field(ge=0, le=60)
+    stroke_rate: float = Field(ge=0, le=100)
     power_watts: float | None = None
     pace_s_per_500m: float | None = None
     heart_rate_bpm: int | None = Field(None, ge=20, le=250)
