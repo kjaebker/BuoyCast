@@ -83,7 +83,7 @@ async def run(settings: Settings) -> None:
         _raw_serial = serial.Serial()
         _raw_serial.port = settings.s4.port
         _raw_serial.baudrate = settings.s4.baud_rate
-        _raw_serial.timeout = 0.5  # readline() must return quickly so no orphaned threads pile up
+        _raw_serial.timeout = 0.1  # S4 responds in ~6ms; 100ms timeout avoids orphaned threads
         serial_port = AsyncSerial(_raw_serial)
         s4_reader = S4Reader(serial_port, event_bus, settings.s4)
         await s4_reader.start()

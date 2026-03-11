@@ -249,6 +249,10 @@ class S4Reader:
             cycle_start = asyncio.get_running_loop().time()
             hits = 0
 
+            # Flush pulse-count messages (P02/P03 at 40 Hz when rowing) that
+            # accumulated since the last cycle, so they don't burn our retries.
+            await self._serial.flush_input()
+
             for addr in POLL_ADDRESSES:
                 if not self._running or not self._connected or self._paused:
                     break
@@ -257,9 +261,10 @@ class S4Reader:
                 logger.debug("S4 >> %s", cmd)
                 await self._send(cmd)
 
-                # Read until we get the matching IDD response or time out.
-                # Up to 5 reads to absorb interleaved PING/SS/SE messages.
-                for _ in range(5):
+                # Read until we get the matching ID response or time out.
+                # Up to 15 reads to absorb any spontaneous messages that arrive
+                # between the command and its response.
+                for _ in range(15):
                     try:
                         line = await self._read_line()
                     except TimeoutError:
