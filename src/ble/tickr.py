@@ -197,8 +197,13 @@ class TickrReader:
 
     async def _connect(self) -> None:
         """Connect to TICKR and subscribe to HR notifications."""
-        await self._ble.connect()
-        await self._ble.start_notify(HR_MEASUREMENT_UUID, self._on_hr_notification)
+        logger.debug("TICKR: calling connect()...")
+        await asyncio.wait_for(self._ble.connect(), timeout=10.0)
+        logger.debug("TICKR: connect() succeeded, subscribing to notifications...")
+        await asyncio.wait_for(
+            self._ble.start_notify(HR_MEASUREMENT_UUID, self._on_hr_notification),
+            timeout=10.0,
+        )
         self._connected = True
         await self._bus.emit(EventType.TICKR_CONNECTED)
         logger.info("TICKR connected: %s", self._settings.device_mac)
