@@ -45,28 +45,28 @@ class TestParseUint16BPM:
 
 class TestParseSingleRRInterval:
     def test_single_rr(self):
-        # flags=0x10 (uint8 BPM, RR present), BPM field=140, RR=700ms
-        # BPM should be derived from RR: round(60000/700) = 86
+        # flags=0x10 (uint8 BPM, RR present), BPM=140, RR=700ms
+        # Parser returns the BPM field as-is; smoothing happens in TickrReader.
         rr_raw = round(700 * 1024 / 1000)
         data = bytearray([0x10, 140])
         data.extend(rr_raw.to_bytes(2, byteorder="little"))
         bpm, rr = parse_hr_measurement(data)
-        assert bpm == round(60000 / 700)
+        assert bpm == 140
         assert len(rr) == 1
         assert abs(rr[0] - 700) <= 1  # Allow 1ms rounding
 
 
 class TestParseMultipleRRIntervals:
     def test_two_rr_intervals(self):
-        # flags=0x10, BPM field=120, two RR intervals: 800ms and 750ms
-        # BPM derived from last RR: round(60000/750) = 80
+        # flags=0x10, BPM=120, two RR intervals: 800ms and 750ms
+        # Parser returns BPM field unchanged.
         rr1_raw = round(800 * 1024 / 1000)
         rr2_raw = round(750 * 1024 / 1000)
         data = bytearray([0x10, 120])
         data.extend(rr1_raw.to_bytes(2, byteorder="little"))
         data.extend(rr2_raw.to_bytes(2, byteorder="little"))
         bpm, rr = parse_hr_measurement(data)
-        assert bpm == round(60000 / 750)
+        assert bpm == 120
         assert len(rr) == 2
         assert abs(rr[0] - 800) <= 1
         assert abs(rr[1] - 750) <= 1
@@ -116,20 +116,19 @@ class TestRejectOutOfRange:
             parse_hr_measurement(data)
 
 
-class TestRRDerivedBPM:
-    def test_rr_overrides_doubled_bpm_field(self):
-        # Real TICKR packet: flags=0x16, BPM field=107 (double-counted),
-        # RR=0x04ec=1260 → 1230ms → ~49 BPM
+class TestRealTickrPackets:
+    def test_packet_with_rr_returns_bpm_field_and_rr(self):
+        # Real TICKR packet: flags=0x16, BPM field=107, RR=0x04ec=1260 raw
+        # Parser returns the BPM field unchanged; TickrReader applies RR smoothing.
         data = bytearray([0x16, 107, 0xEC, 0x04])
         bpm, rr = parse_hr_measurement(data)
+        assert bpm == 107
         rr_ms = round(0x04EC * 1000 / 1024)
-        assert bpm == round(60000 / rr_ms)
-        assert bpm != 107  # Must not pass through the doubled field value
         assert len(rr) == 1
+        assert abs(rr[0] - rr_ms) <= 1
 
-    def test_no_rr_uses_bpm_field(self):
-        # flags=0x06 (sensor contact bits set, no RR), BPM=107
-        # No RR present so BPM field is used as-is
+    def test_packet_without_rr_returns_bpm_field(self):
+        # Real TICKR packet: flags=0x06 (sensor contact bits set, no RR)
         data = bytearray([0x06, 107])
         bpm, rr = parse_hr_measurement(data)
         assert bpm == 107
