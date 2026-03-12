@@ -236,6 +236,32 @@ class TickrReader:
             await self._bus.emit(EventType.TICKR_DISCONNECTED)
             logger.info("TICKR disconnected")
 
+    def _add_rr_intervals(self, rr_intervals: list[int]) -> None:
+        """Add RR intervals to the buffer, rejecting physiological outliers.
+
+        Spurious R-wave detections from poor skin contact produce short RR
+        intervals (e.g. 200-300ms) that would wildly distort a mean. We reject
+        any incoming interval that deviates more than 30% from the current
+        buffer median. On an empty buffer every value is accepted so the reader
+        locks on quickly after connect.
+        """
+        if not self._rr_buffer:
+            self._rr_buffer.extend(rr_intervals)
+            return
+
+        sorted_buf = sorted(self._rr_buffer)
+        mid = len(sorted_buf) // 2
+        median = (
+            sorted_buf[mid]
+            if len(sorted_buf) % 2
+            else (sorted_buf[mid - 1] + sorted_buf[mid]) // 2
+        )
+        for rr in rr_intervals:
+            if abs(rr - median) / median <= 0.30:
+                self._rr_buffer.append(rr)
+            else:
+                logger.debug("Rejected RR outlier %dms (median %dms)", rr, median)
+
     async def _on_hr_notification(self, characteristic: object, data: bytearray) -> None:
         """Handle incoming HR measurement notification."""
         try:
@@ -244,16 +270,18 @@ class TickrReader:
             logger.debug("Skipping invalid HR data: %s", e)
             return
 
-        # Add any new RR intervals to the rolling buffer and derive a smoothed
-        # BPM from the average. This handles two problems:
-        #   1. HRV: a single RR interval is noisy; averaging 6 beats stabilises it.
-        #   2. TICKR double-counting bug: the BPM field can be 2x the real value on
-        #      some firmware. The RR data is always correct, so we prefer it.
-        # If the buffer is still empty (cold start, no RR data yet) fall back to
-        # the BPM field — it will self-correct once RR data arrives.
-        self._rr_buffer.extend(rr_intervals)
+        # Prefer RR-derived BPM — it reflects actual beat-to-beat timing and is
+        # immune to the TICKR BPM-doubling firmware bug.  Outliers are filtered
+        # first so that a single spurious detection doesn't corrupt the average.
+        #
+        # Fallback chain when no clean RR data is available:
+        #   1. bpm_field_doubled=True in config → BPM field / 2
+        #   2. Otherwise → BPM field as-is
+        self._add_rr_intervals(rr_intervals)
         if self._rr_buffer:
             bpm = round(60000 / (sum(self._rr_buffer) / len(self._rr_buffer)))
+        elif self._settings.bpm_field_doubled:
+            bpm = bpm // 2
 
         metrics = RowingMetrics(
             timestamp=datetime.now(tz=timezone.utc),
