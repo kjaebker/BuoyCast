@@ -109,6 +109,7 @@ class S4Reader:
         self._connected = False
         self._paused = False
         self._task: asyncio.Task[None] | None = None
+        self._consecutive_failures = 0
 
         # Latest polled values (accumulated across poll cycles)
         self._values: dict[str, int] = {}
@@ -177,13 +178,18 @@ class S4Reader:
                 await self._connect()
                 await self._poll_loop()
             except (OSError, ProtocolError) as e:
-                logger.warning("S4 connection error: %s", e)
+                self._consecutive_failures += 1
+                if self._consecutive_failures == 1:
+                    logger.warning("S4 connection error: %s", e)
+                else:
+                    logger.debug("S4 reconnect attempt %d: %s", self._consecutive_failures, e)
                 await self._disconnect()
                 if self._running and not self._paused:
                     await asyncio.sleep(self._settings.reconnect_delay_s)
             except asyncio.CancelledError:
                 raise
             except Exception:
+                self._consecutive_failures += 1
                 logger.exception("Unexpected error in S4 reader")
                 await self._disconnect()
                 if self._running and not self._paused:
@@ -231,6 +237,7 @@ class S4Reader:
                 break
 
         self._connected = True
+        self._consecutive_failures = 0
         self._values.clear()
         self._power_buffer.clear()
         await self._bus.emit(EventType.S4_CONNECTED)
