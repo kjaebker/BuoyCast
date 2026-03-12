@@ -7,6 +7,8 @@ import pytest
 
 from src.ble.ftms import (
     FLAG_AVG_STROKE_RATE,
+    FLAG_ELAPSED_TIME,
+    FLAG_EXPENDED_ENERGY,
     FLAG_HEART_RATE,
     FLAG_INSTANTANEOUS_PACE,
     FLAG_INSTANTANEOUS_POWER,
@@ -90,14 +92,35 @@ class TestFlagsField:
     def test_all_flags_set(self):
         data = pack_rower_data(_metrics(
             stroke_rate=28.0, stroke_count=100, distance_m=500.0,
-            pace_s_per_500m=120.0, power_watts=150.0, heart_rate_bpm=140,
+            pace_s_per_500m=120.0, power_watts=150.0, calories=250,
+            heart_rate_bpm=140, elapsed_seconds=600,
         ))
         flags = _unpack_flags(data)
         expected = (
-            FLAG_TOTAL_DISTANCE |
-            FLAG_INSTANTANEOUS_PACE | FLAG_INSTANTANEOUS_POWER | FLAG_HEART_RATE
+            FLAG_TOTAL_DISTANCE | FLAG_INSTANTANEOUS_PACE | FLAG_INSTANTANEOUS_POWER
+            | FLAG_EXPENDED_ENERGY | FLAG_HEART_RATE | FLAG_ELAPSED_TIME
         )
         assert flags == expected
+
+    def test_expended_energy_flag_set_when_calories_present(self):
+        data = pack_rower_data(_metrics(calories=300))
+        flags = _unpack_flags(data)
+        assert flags & FLAG_EXPENDED_ENERGY
+
+    def test_expended_energy_flag_clear_when_none(self):
+        data = pack_rower_data(_metrics(calories=None))
+        flags = _unpack_flags(data)
+        assert not (flags & FLAG_EXPENDED_ENERGY)
+
+    def test_elapsed_time_flag_set_when_present(self):
+        data = pack_rower_data(_metrics(elapsed_seconds=300))
+        flags = _unpack_flags(data)
+        assert flags & FLAG_ELAPSED_TIME
+
+    def test_elapsed_time_flag_clear_when_none(self):
+        data = pack_rower_data(_metrics(elapsed_seconds=None))
+        flags = _unpack_flags(data)
+        assert not (flags & FLAG_ELAPSED_TIME)
 
 
 class TestStrokeRateEncoding:
@@ -199,9 +222,79 @@ class TestPowerPacking:
             _metrics(power_watts=-10.0)
 
 
+class TestExpendedEnergyPacking:
+    def test_total_kcal_encoded(self):
+        """Total energy packed as uint16 immediately after power field."""
+        data = pack_rower_data(_metrics(
+            distance_m=100.0, pace_s_per_500m=120.0,
+            power_watts=150.0, calories=250,
+        ))
+        # offset: flags(2) + stroke(1) + count(2) + dist(3) + pace(2) + power(2) = 12
+        total_kcal = struct.unpack_from("<H", data, 12)[0]
+        assert total_kcal == 250
+
+    def test_energy_per_hour_not_available(self):
+        """Energy Per Hour sub-field is 0xFFFF (not available)."""
+        data = pack_rower_data(_metrics(
+            distance_m=100.0, pace_s_per_500m=120.0,
+            power_watts=150.0, calories=250,
+        ))
+        # offset 14: after total_kcal(2)
+        per_hour = struct.unpack_from("<H", data, 14)[0]
+        assert per_hour == 0xFFFF
+
+    def test_energy_per_minute_not_available(self):
+        """Energy Per Minute sub-field is 0xFF (not available)."""
+        data = pack_rower_data(_metrics(
+            distance_m=100.0, pace_s_per_500m=120.0,
+            power_watts=150.0, calories=250,
+        ))
+        # offset 16: after per_hour(2)
+        per_min = data[16]
+        assert per_min == 0xFF
+
+    def test_calories_clamped_below_0xFFFF(self):
+        """0xFFFF is reserved for 'not available'; large values are clamped to 0xFFFE."""
+        data = pack_rower_data(_metrics(calories=99999))
+        total_kcal = struct.unpack_from("<H", data, 2)[0]  # flags(2), then calories first since no other optional fields
+        # Locate with flag check instead
+        flags = _unpack_flags(data)
+        assert flags & FLAG_EXPENDED_ENERGY
+        # With no distance/pace/power, offset is: flags(2)+stroke(1)+count(2) = 5
+        total_kcal = struct.unpack_from("<H", data, 5)[0]
+        assert total_kcal == 0xFFFE
+
+
+class TestElapsedTimePacking:
+    def test_elapsed_time_encoded(self):
+        """Elapsed time packed as uint16 seconds after HR."""
+        data = pack_rower_data(_metrics(
+            distance_m=100.0, pace_s_per_500m=120.0,
+            power_watts=150.0, calories=250, heart_rate_bpm=140,
+            elapsed_seconds=600,
+        ))
+        # offset: flags(2)+stroke(1)+count(2)+dist(3)+pace(2)+power(2)
+        #         +energy_total(2)+energy_per_hr(2)+energy_per_min(1)+hr(1) = 18
+        elapsed = struct.unpack_from("<H", data, 18)[0]
+        assert elapsed == 600
+
+    def test_elapsed_time_without_hr(self):
+        """Elapsed time packed correctly when HR is absent."""
+        data = pack_rower_data(_metrics(elapsed_seconds=300))
+        # flags(2)+stroke(1)+count(2) = 5 → elapsed starts at 5
+        elapsed = struct.unpack_from("<H", data, 5)[0]
+        assert elapsed == 300
+
+    def test_elapsed_time_clamped_to_uint16(self):
+        """Values > 65535 are clamped."""
+        data = pack_rower_data(_metrics(elapsed_seconds=100000))
+        elapsed = struct.unpack_from("<H", data, 5)[0]
+        assert elapsed == 0xFFFF
+
+
 class TestHeartRatePacking:
     def test_hr_140(self):
-        """HR packed as uint8 at the end."""
+        """HR packed as uint8 after power (no energy fields present)."""
         data = pack_rower_data(_metrics(
             distance_m=100.0, pace_s_per_500m=120.0,
             power_watts=150.0, heart_rate_bpm=140,
@@ -229,19 +322,26 @@ class TestHeartRatePacking:
 
 class TestFullPacking:
     def test_full_metrics_round_trip(self):
-        """All fields present — verify total byte layout."""
+        """All fields present — verify total byte layout.
+
+        Layout (20 bytes):
+          flags(2) + stroke_rate(1) + count(2) + dist(3) + pace(2) + power(2)
+          + energy_total(2) + energy_per_hr(2) + energy_per_min(1)
+          + hr(1) + elapsed(2) = 20
+        """
         metrics = _metrics(
             stroke_rate=28.0,
             stroke_count=100,
             distance_m=2000.0,
             pace_s_per_500m=120.0,
             power_watts=150.0,
+            calories=300,
             heart_rate_bpm=140,
+            elapsed_seconds=600,
         )
         data = pack_rower_data(metrics)
 
-        # Total: flags(2) + stroke_rate(1) + count(2) + dist(3) + pace(2) + power(2) + hr(1) = 13
-        assert len(data) == 13
+        assert len(data) == 20
 
         flags = struct.unpack_from("<H", data, 0)[0]
         stroke_rate = data[2]
@@ -249,14 +349,22 @@ class TestFullPacking:
         distance = int.from_bytes(data[5:8], "little")
         pace = struct.unpack_from("<H", data, 8)[0]
         power = struct.unpack_from("<h", data, 10)[0]
-        hr = data[12]
+        total_kcal = struct.unpack_from("<H", data, 12)[0]
+        energy_per_hr = struct.unpack_from("<H", data, 14)[0]
+        energy_per_min = data[16]
+        hr = data[17]
+        elapsed = struct.unpack_from("<H", data, 18)[0]
 
         assert stroke_rate == 56
         assert stroke_count == 100
         assert distance == 2000
         assert pace == 120
         assert power == 150
+        assert total_kcal == 300
+        assert energy_per_hr == 0xFFFF
+        assert energy_per_min == 0xFF
         assert hr == 140
+        assert elapsed == 600
 
     def test_minimal_metrics(self):
         """Only required fields — stroke rate base."""
