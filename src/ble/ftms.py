@@ -2,7 +2,7 @@
 
 Two parts:
 1. Byte packing functions (pack_rower_data) — platform-independent, fully testable
-2. FTMSBroadcaster class — BlueZ D-Bus GATT server (Linux/Pi only)
+2. FTMSBroadcaster class — BlueZ GATT server via bless (Linux/Pi only)
 
 The FTMS Rower Data characteristic (0x2AD1) format follows the Bluetooth FTMS spec.
 """
@@ -21,6 +21,18 @@ logger = logging.getLogger(__name__)
 # --- FTMS UUIDs ---
 FTMS_SERVICE_UUID = "00001826-0000-1000-8000-00805f9b34fb"
 ROWER_DATA_CHAR_UUID = "00002ad1-0000-1000-8000-00805f9b34fb"
+FITNESS_MACHINE_FEATURE_UUID = "00002ad2-0000-1000-8000-00805f9b34fb"
+
+# --- Fitness Machine Feature value (0x2AD2) ---
+# Reports which fields the rower can provide, as two uint32 LE values:
+#   [0] Feature flags  [1] Target Setting flags (none supported)
+# Bit  1: Cadence (stroke rate)
+# Bit  2: Total Distance
+# Bit  5: Pace
+# Bit 10: Heart Rate
+# Bit 14: Power
+_FTMS_FEATURE_FLAGS = (1 << 1) | (1 << 2) | (1 << 5) | (1 << 10) | (1 << 14)
+_FITNESS_MACHINE_FEATURE_VALUE = struct.pack("<II", _FTMS_FEATURE_FLAGS, 0)
 
 # --- Rower Data flags (uint16, little-endian) ---
 # Bit 0: More Data (0 = present fields follow, 1 = some omitted) — always 0
@@ -104,12 +116,14 @@ def pack_rower_data(metrics: RowingMetrics) -> bytes:
 class FTMSBroadcaster:
     """BLE FTMS Rower peripheral broadcaster.
 
-    Uses BlueZ D-Bus GATT server to advertise as 'BuoyCast' and serve
-    the Rower Data characteristic. Subscribes to MERGED_METRICS events
-    and updates the characteristic at ~1Hz.
+    Uses the `bless` library to register a BlueZ GATT application and start
+    LE advertising as 'BuoyCast'. Subscribes to MERGED_METRICS events and
+    updates the Rower Data characteristic (~1Hz), triggering BLE notifications
+    to connected clients (Peloton app, WaterRower app, etc.).
 
-    This class requires Linux with BlueZ — it will log a warning and
-    no-op on other platforms.
+    This class requires Linux with BlueZ and the `bless` package. On other
+    platforms, or if bless is not installed, it logs a warning and runs in
+    data-only mode (still packs data, but does not advertise).
     """
 
     def __init__(self, event_bus: EventBus, device_name: str = "BuoyCast") -> None:
@@ -117,6 +131,7 @@ class FTMSBroadcaster:
         self._device_name = device_name
         self._running = False
         self._task: asyncio.Task[None] | None = None
+        self._server: object | None = None  # bless.BlessServer, lazily imported
         self._latest_data: bytes = pack_rower_data(
             RowingMetrics(
                 timestamp=__import__("datetime").datetime.now(
@@ -134,20 +149,18 @@ class FTMSBroadcaster:
         """Start the FTMS broadcaster.
 
         Subscribes to MERGED_METRICS and starts updating the characteristic.
-        On non-Linux platforms, logs a warning and runs in data-only mode
-        (still packs data, but doesn't advertise over BLE).
+        On non-Linux platforms, or if bless is unavailable, logs a warning and
+        runs in data-only mode (still packs data, but doesn't advertise over BLE).
         """
         self._running = True
         self._queue = self._bus.subscribe(EventType.MERGED_METRICS)
         self._task = asyncio.create_task(self._run_loop())
 
-        # Attempt to set up BlueZ advertising (Linux only)
         try:
             await self._setup_ble()
-        except Exception:
+        except Exception as exc:
             logger.warning(
-                "BlueZ GATT setup failed — running in data-only mode "
-                "(BLE advertising not available on this platform)"
+                "BlueZ GATT setup failed — running in data-only mode: %s", exc
             )
 
     async def stop(self) -> None:
@@ -184,33 +197,71 @@ class FTMSBroadcaster:
             await self._update_characteristic(self._latest_data)
 
     async def _setup_ble(self) -> None:
-        """Set up BlueZ D-Bus GATT server and advertising.
-
-        This is a placeholder — full implementation requires:
-        - Register GATT application via D-Bus
-        - Register advertisement with FTMS service UUID
-        - Handle client connect/disconnect callbacks
-        """
+        """Set up BlueZ GATT server and LE advertising via bless."""
         import platform
 
         if platform.system() != "Linux":
             raise RuntimeError("BlueZ only available on Linux")
 
-        # TODO: Implement BlueZ D-Bus GATT server registration
-        # This will use dbus-next or similar to:
-        # 1. Register GATT application with FTMS service + Rower Data characteristic
-        # 2. Start LE advertising as "BuoyCast"
-        # 3. Handle ReadValue requests with self._latest_data
-        logger.info("BlueZ FTMS GATT server setup (placeholder)")
+        try:
+            from bless import (  # type: ignore[import]
+                BlessServer,
+                GATTAttributePermissions,
+                GATTCharacteristicProperties,
+            )
+        except ImportError as exc:
+            raise RuntimeError(
+                "bless not installed — run: pip install bless"
+            ) from exc
+
+        self._server = BlessServer(name=self._device_name)
+
+        # Register the FTMS service
+        await self._server.add_new_service(FTMS_SERVICE_UUID)
+
+        # Fitness Machine Feature (0x2AD2) — READ
+        # Required by the FTMS spec; tells clients which fields we can provide.
+        await self._server.add_new_characteristic(
+            FTMS_SERVICE_UUID,
+            FITNESS_MACHINE_FEATURE_UUID,
+            GATTCharacteristicProperties.read,
+            bytearray(_FITNESS_MACHINE_FEATURE_VALUE),
+            GATTAttributePermissions.readable,
+        )
+
+        # Rower Data (0x2AD1) — READ + NOTIFY
+        # Clients subscribe to notifications; we push updates at ~1Hz.
+        await self._server.add_new_characteristic(
+            FTMS_SERVICE_UUID,
+            ROWER_DATA_CHAR_UUID,
+            GATTCharacteristicProperties.read | GATTCharacteristicProperties.notify,
+            bytearray(self._latest_data),
+            GATTAttributePermissions.readable,
+        )
+
+        await self._server.start()
+        logger.info(
+            "FTMS advertising as '%s' — service UUID %s",
+            self._device_name,
+            FTMS_SERVICE_UUID,
+        )
 
     async def _teardown_ble(self) -> None:
-        """Tear down BlueZ advertising and GATT server."""
-        logger.info("BlueZ FTMS GATT server teardown")
+        """Stop BlueZ advertising and unregister the GATT application."""
+        if self._server is not None:
+            try:
+                await self._server.stop()
+            except Exception as exc:
+                logger.debug("FTMS server stop error: %s", exc)
+            self._server = None
+        logger.info("FTMS advertising stopped")
 
     async def _update_characteristic(self, data: bytes) -> None:
-        """Update the Rower Data characteristic value.
-
-        On Linux with BlueZ, this would trigger a notification to
-        connected clients. In data-only mode, this is a no-op.
-        """
-        pass
+        """Push new Rower Data to all subscribed BLE clients."""
+        if self._server is None:
+            return
+        char = self._server.get_characteristic(ROWER_DATA_CHAR_UUID)
+        if char is None:
+            return
+        char.value = bytearray(data)
+        self._server.update_value(FTMS_SERVICE_UUID, ROWER_DATA_CHAR_UUID)
