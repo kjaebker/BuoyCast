@@ -117,7 +117,7 @@ async def run(settings: Settings) -> None:
                 device = await BleakScanner.find_device_by_address(_mac, timeout=20.0)
                 if device is not None:
                     logger.info("TICKR: found via scan, connecting")
-                    return BleakClient(device)
+                    return BleakClient(device, timeout=20.0)
                 raise OSError(f"TICKR {_mac} not found in BLE scan — is it worn and awake?")
 
             tickr_reader = TickrReader(ble_factory, event_bus, settings.heart_rate)
