@@ -248,7 +248,7 @@ class FTMSBroadcaster:
                 # Register the FTMS service
                 await server.add_new_service(FTMS_SERVICE_UUID)
 
-                # Fitness Machine Feature (0x2AD2) — READ
+                # Fitness Machine Feature (0x2ACC) — READ
                 # Required by the FTMS spec; tells clients which fields we can provide.
                 await server.add_new_characteristic(
                     FTMS_SERVICE_UUID,
