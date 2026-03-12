@@ -108,16 +108,15 @@ async def run(settings: Settings) -> None:
                 """Scan for TICKR before connecting — required on Linux/BlueZ to
                 populate the device cache, otherwise connect raises DeviceNotFound.
 
-                Note: falling back to BleakClient(mac_string) does NOT work on
-                Linux/BlueZ if the device wasn't found in the scan — BlueZ requires
-                the device to be in its D-Bus cache first.  Raise instead so the
-                TickrReader backoff loop retries the full scan.
+                We pass the MAC string (not the BLEDevice object) to BleakClient so
+                that bleak re-resolves the D-Bus object path at connect time rather
+                than using a potentially-stale path captured during the scan.
                 """
                 logger.info("TICKR: scanning for %s (timeout=20s)...", _mac)
                 device = await BleakScanner.find_device_by_address(_mac, timeout=20.0)
                 if device is not None:
-                    logger.info("TICKR: found via scan, connecting")
-                    return BleakClient(device, timeout=10.0)
+                    logger.info("TICKR: found via scan, connecting via MAC string")
+                    return BleakClient(_mac, timeout=10.0)
                 raise OSError(f"TICKR {_mac} not found in BLE scan — is it worn and awake?")
 
             tickr_reader = TickrReader(ble_factory, event_bus, settings.heart_rate)
