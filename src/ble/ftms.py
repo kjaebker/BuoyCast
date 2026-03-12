@@ -149,7 +149,7 @@ class FTMSBroadcaster:
         """Start the FTMS broadcaster.
 
         Subscribes to MERGED_METRICS and starts updating the characteristic.
-        On non-Linux platforms, or if bless is unavailable, logs a warning and
+        On non-Linux platforms, or if bless is unavailable, logs an error and
         runs in data-only mode (still packs data, but doesn't advertise over BLE).
         """
         self._running = True
@@ -159,8 +159,11 @@ class FTMSBroadcaster:
         try:
             await self._setup_ble()
         except Exception as exc:
-            logger.warning(
-                "BlueZ GATT setup failed — running in data-only mode: %s", exc
+            logger.error(
+                "BlueZ GATT setup failed — BLE broadcasting disabled. "
+                "BuoyCast will NOT appear to Peloton. Error: %s",
+                exc,
+                exc_info=True,
             )
 
     async def stop(self) -> None:
@@ -197,7 +200,18 @@ class FTMSBroadcaster:
             await self._update_characteristic(self._latest_data)
 
     async def _setup_ble(self) -> None:
-        """Set up BlueZ GATT server and LE advertising via bless."""
+        """Set up BlueZ GATT server and LE advertising via bless.
+
+        Retries up to _BLE_SETUP_ATTEMPTS times with _BLE_RETRY_DELAY_S seconds
+        between attempts. This handles two real-world failure modes:
+        1. The HCI adapter needs ~1-2s after `bluetoothctl power on` before its
+           advertising stack accepts RegisterAdvertisement — attempting too early
+           results in a silent failure where bless returns OK but no packets go
+           out over the air.
+        2. After a crash/restart, BlueZ can hold stale D-Bus GATT/advertisement
+           registrations for several seconds. Retrying lets those expire before
+           we re-register.
+        """
         import platform
 
         if platform.system() != "Linux":
@@ -214,37 +228,74 @@ class FTMSBroadcaster:
                 "bless not installed — run: pip install bless"
             ) from exc
 
-        self._server = BlessServer(name=self._device_name)
+        _BLE_SETUP_ATTEMPTS = 4
+        _BLE_RETRY_DELAY_S = 3.0
+        # Give the HCI adapter a moment to finish initialising its advertising
+        # stack after being powered on (bluetoothctl power on returns before
+        # BlueZ's LEAdvertisingManager is fully ready).
+        _BLE_INITIAL_DELAY_S = 2.0
 
-        # Register the FTMS service
-        await self._server.add_new_service(FTMS_SERVICE_UUID)
+        logger.info("FTMS: waiting %.0fs for BT adapter to settle…", _BLE_INITIAL_DELAY_S)
+        await asyncio.sleep(_BLE_INITIAL_DELAY_S)
 
-        # Fitness Machine Feature (0x2AD2) — READ
-        # Required by the FTMS spec; tells clients which fields we can provide.
-        await self._server.add_new_characteristic(
-            FTMS_SERVICE_UUID,
-            FITNESS_MACHINE_FEATURE_UUID,
-            GATTCharacteristicProperties.read,
-            bytearray(_FITNESS_MACHINE_FEATURE_VALUE),
-            GATTAttributePermissions.readable,
-        )
+        last_exc: Exception | None = None
+        for attempt in range(1, _BLE_SETUP_ATTEMPTS + 1):
+            try:
+                # Always create a fresh BlessServer — reusing a stopped instance
+                # leaves stale D-Bus objects and causes RegisterApplication to fail.
+                server = BlessServer(name=self._device_name, name_overwrite=True)
 
-        # Rower Data (0x2AD1) — READ + NOTIFY
-        # Clients subscribe to notifications; we push updates at ~1Hz.
-        await self._server.add_new_characteristic(
-            FTMS_SERVICE_UUID,
-            ROWER_DATA_CHAR_UUID,
-            GATTCharacteristicProperties.read | GATTCharacteristicProperties.notify,
-            bytearray(self._latest_data),
-            GATTAttributePermissions.readable,
-        )
+                # Register the FTMS service
+                await server.add_new_service(FTMS_SERVICE_UUID)
 
-        await self._server.start()
-        logger.info(
-            "FTMS advertising as '%s' — service UUID %s",
-            self._device_name,
-            FTMS_SERVICE_UUID,
-        )
+                # Fitness Machine Feature (0x2AD2) — READ
+                # Required by the FTMS spec; tells clients which fields we can provide.
+                await server.add_new_characteristic(
+                    FTMS_SERVICE_UUID,
+                    FITNESS_MACHINE_FEATURE_UUID,
+                    GATTCharacteristicProperties.read,
+                    bytearray(_FITNESS_MACHINE_FEATURE_VALUE),
+                    GATTAttributePermissions.readable,
+                )
+
+                # Rower Data (0x2AD1) — READ + NOTIFY
+                # Clients subscribe to notifications; we push updates at ~1Hz.
+                await server.add_new_characteristic(
+                    FTMS_SERVICE_UUID,
+                    ROWER_DATA_CHAR_UUID,
+                    GATTCharacteristicProperties.read | GATTCharacteristicProperties.notify,
+                    bytearray(self._latest_data),
+                    GATTAttributePermissions.readable,
+                )
+
+                await server.start()
+                self._server = server
+                logger.info(
+                    "FTMS advertising as '%s' — service UUID %s",
+                    self._device_name,
+                    FTMS_SERVICE_UUID,
+                )
+                return  # success — exit retry loop
+
+            except Exception as exc:
+                last_exc = exc
+                if attempt < _BLE_SETUP_ATTEMPTS:
+                    logger.warning(
+                        "FTMS BLE setup attempt %d/%d failed: %s — retrying in %.0fs",
+                        attempt,
+                        _BLE_SETUP_ATTEMPTS,
+                        exc,
+                        _BLE_RETRY_DELAY_S,
+                    )
+                    await asyncio.sleep(_BLE_RETRY_DELAY_S)
+                else:
+                    logger.error(
+                        "FTMS BLE setup failed after %d attempts — last error: %s",
+                        _BLE_SETUP_ATTEMPTS,
+                        exc,
+                    )
+
+        raise last_exc  # type: ignore[misc]
 
     async def _teardown_ble(self) -> None:
         """Stop BlueZ advertising and unregister the GATT application."""
