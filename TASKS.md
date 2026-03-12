@@ -79,6 +79,7 @@ Before starting any task, set its status to `in_progress`. Mark `done` when comp
 | 6.1 | FTMS broadcaster â€” BlueZ D-Bus GATT server, advertise as BuoyCast, Rower Data characteristic 0x2AD1, ~1Hz updates, client disconnect â†’ restart advertising (`src/ble/ftms.py`) | done |
 | 6.2 | FTMS byte packing â€” flags field, stroke rate uint8 (Ã—2), distance uint24, pace uint16, power int16, HR uint8 conditional | done |
 | 6.3 | Tests â€” FTMS packing unit tests (`tests/unit/test_ftms_packing.py`) + manual Peloton connection checklist | done |
+| 6.4 | Peloton integration â€” add Elapsed Time (bit 11) and Expended Energy (bit 8) to Rower Data packing so Peloton post-workout summary shows calories and duration | done |
 
 **Phase 6 exit criteria:** `pytest tests/unit/test_ftms_packing.py` passes. Manual BLE connection verified with Peloton app on device.
 
