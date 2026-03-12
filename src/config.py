@@ -25,6 +25,11 @@ class HeartRateSettings(BaseModel):
     device_mac: str = ""
     device_name: str = ""
     required: bool = False
+    # Set to True for Wahoo TICKR (original) units that report BPM at 2x the
+    # actual rate due to a firmware bug that counts both the P-wave and R-wave.
+    # When True, the BPM field is halved; this is used as a fallback when RR
+    # interval data is unavailable or all intervals are flagged as outliers.
+    bpm_field_doubled: bool = False
 
 
 class WorkoutSettings(BaseModel):
