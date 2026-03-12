@@ -93,6 +93,13 @@ def parse_hr_measurement(data: bytes | bytearray) -> tuple[int, list[int]]:
             rr_intervals_ms.append(rr_ms)
             offset += 2
 
+    # Derive BPM from the most recent RR interval when available — more accurate
+    # than the TICKR's internal counter which can double-count on some firmware.
+    if rr_intervals_ms:
+        bpm = round(60000 / rr_intervals_ms[-1])
+        if bpm < 20 or bpm > 250:
+            raise ValueError(f"RR-derived heart rate out of range: {bpm} BPM")
+
     return bpm, rr_intervals_ms
 
 
