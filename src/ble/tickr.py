@@ -207,12 +207,20 @@ class TickrReader:
         """Disconnect from TICKR and fire event."""
         was_connected = self._connected
         self._connected = False
-        try:
-            if self._ble is not None and self._ble.is_connected:
-                await self._ble.stop_notify(HR_MEASUREMENT_UUID)
+        if self._ble is not None:
+            try:
+                if self._ble.is_connected:
+                    await self._ble.stop_notify(HR_MEASUREMENT_UUID)
+            except Exception:
+                pass
+            try:
+                # Always call disconnect — even if connect() timed out, BlueZ may
+                # still have a pending connection attempt that must be cancelled.
+                # Skipping this leaves BlueZ stuck and causes the next connect to
+                # also time out.
                 await self._ble.disconnect()
-        except Exception:
-            pass
+            except Exception:
+                pass
         if was_connected:
             await self._bus.emit(EventType.TICKR_DISCONNECTED)
             logger.info("TICKR disconnected")
