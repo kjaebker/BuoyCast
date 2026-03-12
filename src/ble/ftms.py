@@ -268,6 +268,11 @@ class FTMSBroadcaster:
                     GATTAttributePermissions.readable,
                 )
 
+                # bless requires a read callback — without it, any client READ
+                # raises BlessError("Read Callback is undefined") and crashes
+                # the D-Bus connection. Just return the characteristic's stored value.
+                server.read_request_func = lambda char: char.value
+
                 await server.start()
                 self._server = server
                 logger.info(
