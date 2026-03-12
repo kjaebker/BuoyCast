@@ -29,7 +29,7 @@ export function MetricSparkline({
         {chartData.length > 1 ? (
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData}>
-              <YAxis domain={["auto", "auto"]} hide />
+              <YAxis domain={["dataMin - 2", "dataMax + 2"]} hide />
               <Line
                 type="monotone"
                 dataKey="value"
