@@ -69,8 +69,8 @@ fi
 "$INSTALL_DIR/.venv/bin/pip" install --upgrade pip -q
 "$INSTALL_DIR/.venv/bin/pip" install -e "$INSTALL_DIR" -q
 
-# Install BLE library (bleak) for TICKR + FTMS
-"$INSTALL_DIR/.venv/bin/pip" install bleak dbus-python -q
+# Install BLE libraries: bleak (central/TICKR) + bless (peripheral/FTMS broadcaster)
+"$INSTALL_DIR/.venv/bin/pip" install bleak bless dbus-python -q
 
 info "Python packages installed"
 
