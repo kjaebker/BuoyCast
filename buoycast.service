@@ -11,6 +11,11 @@ Group=pi
 WorkingDirectory=/opt/buoycast
 ExecStartPre=+/usr/sbin/rfkill unblock bluetooth
 ExecStartPre=+/usr/bin/bluetoothctl power on
+# Give the HCI adapter time to fully initialise its LE advertising stack.
+# Without this sleep, bless can call RegisterAdvertisement before BlueZ's
+# LEAdvertisingManager is ready, causing a silent failure where the log says
+# "advertising" but no packets go over the air.
+ExecStartPre=+/bin/sleep 3
 ExecStart=/opt/buoycast/.venv/bin/python -m src.main
 Restart=always
 RestartSec=5
