@@ -40,6 +40,8 @@ class TestTickrReaderConnection:
     async def test_receives_hr_notifications(
         self, mock_ble_stable: MockBLEClient, event_bus: EventBus, hr_settings: HeartRateSettings
     ):
+        # mock_ble_stable sends BPM field=140, RR=700ms.
+        # RR-derived BPM = round(60000/700) = 86; reader emits that value.
         reader = TickrReader(mock_ble_stable, event_bus, hr_settings, **FAST_TIMING)
         q = event_bus.subscribe(EventType.METRICS_UPDATE)
 
@@ -48,7 +50,33 @@ class TestTickrReaderConnection:
         assert event.type == EventType.METRICS_UPDATE
 
         metrics: RowingMetrics = event.data
-        assert metrics.heart_rate_bpm == 140
+        assert metrics.heart_rate_bpm == round(60000 / 700)
+
+        await reader.stop()
+
+    async def test_rr_smoothing_corrects_doubled_bpm(
+        self, event_bus: EventBus, hr_settings: HeartRateSettings
+    ):
+        # Simulate the TICKR double-counting bug: BPM field=107, RR=1260ms (~49 BPM).
+        # After the buffer fills, emitted BPM must be derived from RR, not the field.
+        mock = MockBLEClient()
+        rr_ms = round(0x04EC * 1000 / 1024)  # 1260 raw → ~1230ms
+        mock.set_hr(107, [rr_ms])
+        mock.set_notify_interval(0.02)
+
+        reader = TickrReader(mock, event_bus, hr_settings, **FAST_TIMING)
+        q = event_bus.subscribe(EventType.METRICS_UPDATE)
+
+        await reader.start()
+        # Drain enough notifications to fill the buffer (maxlen=6)
+        last_bpm = None
+        for _ in range(8):
+            event = await asyncio.wait_for(q.get(), timeout=1.0)
+            last_bpm = event.data.heart_rate_bpm
+
+        expected = round(60000 / rr_ms)
+        assert last_bpm == expected, f"Expected {expected} BPM from RR, got {last_bpm}"
+        assert last_bpm != 107
 
         await reader.stop()
 
