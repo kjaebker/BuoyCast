@@ -232,6 +232,7 @@ class TickrReader:
 
     async def _on_hr_notification(self, characteristic: object, data: bytearray) -> None:
         """Handle incoming HR measurement notification."""
+        logger.debug("TICKR raw HR bytes: %s", data.hex())
         try:
             bpm, rr_intervals = parse_hr_measurement(data)
         except ValueError as e:
