@@ -29,9 +29,13 @@ FITNESS_MACHINE_FEATURE_UUID = "00002acc-0000-1000-8000-00805f9b34fb"
 # Bit  1: Cadence (stroke rate)
 # Bit  2: Total Distance
 # Bit  5: Pace
+# Bit  9: Energy Expenditure (calories)
 # Bit 10: Heart Rate
+# Bit 12: Elapsed Time
 # Bit 14: Power
-_FTMS_FEATURE_FLAGS = (1 << 1) | (1 << 2) | (1 << 5) | (1 << 10) | (1 << 14)
+_FTMS_FEATURE_FLAGS = (
+    (1 << 1) | (1 << 2) | (1 << 5) | (1 << 9) | (1 << 10) | (1 << 12) | (1 << 14)
+)
 _FITNESS_MACHINE_FEATURE_VALUE = struct.pack("<II", _FTMS_FEATURE_FLAGS, 0)
 
 # --- Rower Data flags (uint16, little-endian) ---
@@ -52,7 +56,9 @@ FLAG_AVG_STROKE_RATE = 1 << 1
 FLAG_TOTAL_DISTANCE = 1 << 2
 FLAG_INSTANTANEOUS_PACE = 1 << 3
 FLAG_INSTANTANEOUS_POWER = 1 << 5
+FLAG_EXPENDED_ENERGY = 1 << 8
 FLAG_HEART_RATE = 1 << 9
+FLAG_ELAPSED_TIME = 1 << 11
 
 
 def pack_rower_data(metrics: RowingMetrics) -> bytes:
@@ -67,7 +73,9 @@ def pack_rower_data(metrics: RowingMetrics) -> bytes:
         Bit 2 — Total Distance:         uint24 LE, meters
         Bit 3 — Instantaneous Pace:     uint16, seconds/500m
         Bit 5 — Instantaneous Power:    int16, watts
+        Bit 8 — Expended Energy:        uint16 (total kcal) + uint16 (kcal/h) + uint8 (kcal/min)
         Bit 9 — Heart Rate:             uint8, BPM
+        Bit 11 — Elapsed Time:          uint16, seconds
 
     Note: bit 0 = 0 means "More Data = false", i.e. the base fields
     (Instantaneous Stroke Rate + Stroke Count) ARE present.  Setting bit 1
@@ -110,11 +118,30 @@ def pack_rower_data(metrics: RowingMetrics) -> bytes:
         power = max(0, min(int(round(metrics.power_watts)), 32767))
         data.extend(struct.pack("<h", power))
 
+    # Expended Energy (bit 8) — three sub-fields required when flag is set:
+    #   Total Energy:     uint16 kcal  (0xFFFF = "not available")
+    #   Energy Per Hour:  uint16 kcal/h (0xFFFF = "not available")
+    #   Energy Per Minute: uint8 kcal/min (0xFF = "not available")
+    # Peloton uses this for post-workout calorie display.
+    if metrics.calories is not None:
+        flags |= FLAG_EXPENDED_ENERGY
+        total_kcal = min(metrics.calories, 0xFFFE)  # 0xFFFF reserved for "n/a"
+        data.extend(struct.pack("<H", total_kcal))  # Total Energy
+        data.extend(struct.pack("<H", 0xFFFF))       # Energy Per Hour (n/a)
+        data.extend(struct.pack("<B", 0xFF))         # Energy Per Minute (n/a)
+
     # Heart Rate (uint8, BPM — conditional)
     if metrics.heart_rate_bpm is not None:
         flags |= FLAG_HEART_RATE
         hr = min(max(metrics.heart_rate_bpm, 0), 255)
         data.extend(struct.pack("<B", hr))
+
+    # Elapsed Time (bit 11) — uint16 seconds.
+    # Peloton uses this for workout duration tracking.
+    if metrics.elapsed_seconds is not None:
+        flags |= FLAG_ELAPSED_TIME
+        elapsed = min(metrics.elapsed_seconds, 0xFFFF)
+        data.extend(struct.pack("<H", elapsed))
 
     # Prepend flags
     result = struct.pack("<H", flags) + bytes(data)
