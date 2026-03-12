@@ -112,10 +112,10 @@ async def run(settings: Settings) -> None:
                 that bleak re-resolves the D-Bus object path at connect time rather
                 than using a potentially-stale path captured during the scan.
                 """
-                logger.info("TICKR: scanning for %s (timeout=20s)...", _mac)
+                logger.debug("TICKR: scanning for %s (timeout=20s)...", _mac)
                 device = await BleakScanner.find_device_by_address(_mac, timeout=20.0)
                 if device is not None:
-                    logger.info("TICKR: found via scan, connecting via MAC string")
+                    logger.debug("TICKR: found via scan, connecting via MAC string")
                     return BleakClient(_mac, timeout=10.0)
                 raise OSError(f"TICKR {_mac} not found in BLE scan — is it worn and awake?")
 
