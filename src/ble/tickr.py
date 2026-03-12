@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+from collections import deque
 from datetime import datetime, timezone
 from typing import Callable, Protocol
 
@@ -93,13 +94,6 @@ def parse_hr_measurement(data: bytes | bytearray) -> tuple[int, list[int]]:
             rr_intervals_ms.append(rr_ms)
             offset += 2
 
-    # Derive BPM from the most recent RR interval when available — more accurate
-    # than the TICKR's internal counter which can double-count on some firmware.
-    if rr_intervals_ms:
-        bpm = round(60000 / rr_intervals_ms[-1])
-        if bpm < 20 or bpm > 250:
-            raise ValueError(f"RR-derived heart rate out of range: {bpm} BPM")
-
     return bpm, rr_intervals_ms
 
 
@@ -140,6 +134,10 @@ class TickrReader:
         self._backoff_base_s = backoff_base_s
         self._backoff_max_s = backoff_max_s
         self._poll_interval_s = poll_interval_s
+        # Rolling buffer of recent RR intervals (ms). BPM is derived from their
+        # average rather than from a single beat, which eliminates HRV noise and
+        # prevents the TICKR's double-counting firmware bug from reaching the UI.
+        self._rr_buffer: deque[int] = deque(maxlen=6)
 
     @property
     def connected(self) -> bool:
@@ -233,18 +231,29 @@ class TickrReader:
                 await self._ble.disconnect()
             except Exception:
                 pass
+        self._rr_buffer.clear()
         if was_connected:
             await self._bus.emit(EventType.TICKR_DISCONNECTED)
             logger.info("TICKR disconnected")
 
     async def _on_hr_notification(self, characteristic: object, data: bytearray) -> None:
         """Handle incoming HR measurement notification."""
-        logger.debug("TICKR raw HR bytes: %s", data.hex())
         try:
             bpm, rr_intervals = parse_hr_measurement(data)
         except ValueError as e:
             logger.debug("Skipping invalid HR data: %s", e)
             return
+
+        # Add any new RR intervals to the rolling buffer and derive a smoothed
+        # BPM from the average. This handles two problems:
+        #   1. HRV: a single RR interval is noisy; averaging 6 beats stabilises it.
+        #   2. TICKR double-counting bug: the BPM field can be 2x the real value on
+        #      some firmware. The RR data is always correct, so we prefer it.
+        # If the buffer is still empty (cold start, no RR data yet) fall back to
+        # the BPM field — it will self-correct once RR data arrives.
+        self._rr_buffer.extend(rr_intervals)
+        if self._rr_buffer:
+            bpm = round(60000 / (sum(self._rr_buffer) / len(self._rr_buffer)))
 
         metrics = RowingMetrics(
             timestamp=datetime.now(tz=timezone.utc),
