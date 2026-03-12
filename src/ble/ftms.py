@@ -248,7 +248,7 @@ class FTMSBroadcaster:
                 # Register the FTMS service
                 await server.add_new_service(FTMS_SERVICE_UUID)
 
-                # Fitness Machine Feature (0x2AD2) — READ
+                # Fitness Machine Feature (0x2ACC) — READ
                 # Required by the FTMS spec; tells clients which fields we can provide.
                 await server.add_new_characteristic(
                     FTMS_SERVICE_UUID,
@@ -267,6 +267,11 @@ class FTMSBroadcaster:
                     bytearray(self._latest_data),
                     GATTAttributePermissions.readable,
                 )
+
+                # bless requires a read callback — without it, any client READ
+                # raises BlessError("Read Callback is undefined") and crashes
+                # the D-Bus connection. Just return the characteristic's stored value.
+                server.read_request_func = lambda char: char.value
 
                 await server.start()
                 self._server = server
