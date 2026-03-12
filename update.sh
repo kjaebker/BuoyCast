@@ -55,6 +55,8 @@ info "Updating Python dependencies..."
 # Clean up any stale pip temp dirs (left behind by interrupted/root installs)
 find "$INSTALL_DIR/.venv/lib" -maxdepth 3 -name '~*' -type d -exec rm -rf {} + 2>/dev/null || true
 sudo -u pi "$INSTALL_DIR/.venv/bin/pip" install -e "$INSTALL_DIR" -q
+# BLE libraries are not in pyproject.toml (Linux-only) — install explicitly
+sudo -u pi "$INSTALL_DIR/.venv/bin/pip" install bleak bless dbus-python -q
 
 # ── Restart service ───────────────────────────────────────────────────
 info "Restarting service..."
