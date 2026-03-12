@@ -28,11 +28,19 @@ def _unpack_flags(data: bytes) -> int:
 
 
 class TestFlagsField:
-    def test_stroke_rate_flag_always_set(self):
-        """Stroke rate flag is always set (base field)."""
+    def test_base_fields_always_present(self):
+        """Instantaneous stroke rate + stroke count are the FTMS base fields.
+        They are always present when bit 0 (More Data) = 0 — no flag needed.
+        Verify bit 1 (Average Stroke Rate) is NOT set (we don't send that extra
+        field) and that the data is at least 5 bytes long.
+        """
         data = pack_rower_data(_metrics())
         flags = _unpack_flags(data)
-        assert flags & FLAG_AVG_STROKE_RATE
+        assert not (flags & FLAG_AVG_STROKE_RATE), (
+            "Bit 1 (Average Stroke Rate) must not be set — "
+            "setting it without writing the extra uint8 mis-aligns parsing"
+        )
+        assert len(data) >= 5  # flags(2) + stroke_rate(1) + stroke_count(2)
 
     def test_distance_flag_set_when_present(self):
         data = pack_rower_data(_metrics(distance_m=500.0))
@@ -86,7 +94,7 @@ class TestFlagsField:
         ))
         flags = _unpack_flags(data)
         expected = (
-            FLAG_AVG_STROKE_RATE | FLAG_TOTAL_DISTANCE |
+            FLAG_TOTAL_DISTANCE |
             FLAG_INSTANTANEOUS_PACE | FLAG_INSTANTANEOUS_POWER | FLAG_HEART_RATE
         )
         assert flags == expected
