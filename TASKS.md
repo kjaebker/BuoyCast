@@ -161,6 +161,7 @@ Before starting any task, set its status to `in_progress`. Mark `done` when comp
 | 11.14 | Move dashboard build to GitHub Actions — dashboard/dist tracked in repo, Pi just does git pull, Node.js removed from install.sh, update.sh added | done |
 | 11.15 | Fix install/update scripts — rename all waterrower → buoycast (SERVICE_NAME, hostname, service file), fix update.sh git pull failure when INSTALL_DIR is not a git repo (store source dir during install, rsync on update), add config.toml already-exists notice | done |
 | 11.16 | S4 init fallback ? RESET before IRD probe, fallback IRD init sequence when IRDD errors persist | in_progress |
+| 11.17 | Fix TICKR BLE scan: increase timeout 10s→20s, remove broken MAC-string fallback that always fails on Linux/BlueZ | done |
 
 **Phase 11 exit criteria:** Full `pytest` suite passes on Pi. Manual 10-minute workout verified end-to-end.
 
