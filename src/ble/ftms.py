@@ -21,9 +21,9 @@ logger = logging.getLogger(__name__)
 # --- FTMS UUIDs ---
 FTMS_SERVICE_UUID = "00001826-0000-1000-8000-00805f9b34fb"
 ROWER_DATA_CHAR_UUID = "00002ad1-0000-1000-8000-00805f9b34fb"
-FITNESS_MACHINE_FEATURE_UUID = "00002ad2-0000-1000-8000-00805f9b34fb"
+FITNESS_MACHINE_FEATURE_UUID = "00002acc-0000-1000-8000-00805f9b34fb"
 
-# --- Fitness Machine Feature value (0x2AD2) ---
+# --- Fitness Machine Feature value (0x2ACC) ---
 # Reports which fields the rower can provide, as two uint32 LE values:
 #   [0] Feature flags  [1] Target Setting flags (none supported)
 # Bit  1: Cadence (stroke rate)
