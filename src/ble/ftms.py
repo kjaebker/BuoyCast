@@ -58,13 +58,22 @@ FLAG_HEART_RATE = 1 << 9
 def pack_rower_data(metrics: RowingMetrics) -> bytes:
     """Pack RowingMetrics into FTMS Rower Data characteristic bytes.
 
-    Field layout (after flags uint16):
-    - Stroke Rate: uint8, resolution 0.5 SPM (value × 2)
-    - Stroke Count: uint16
-    - Total Distance: uint24 (3 bytes LE), meters
-    - Instantaneous Pace: uint16, seconds/500m
-    - Instantaneous Power: int16, watts (clamped to >= 0)
-    - Heart Rate: uint8, BPM (conditional — omitted if None)
+    FTMS Rower Data field layout (flags uint16, then fields in order):
+      BASE (bit 0 = 0, always present — no flag needed):
+        Instantaneous Stroke Rate: uint8, resolution 0.5 SPM (raw = SPM × 2)
+        Stroke Count:              uint16
+      OPTIONAL (present only when corresponding flag bit is set):
+        Bit 1 — Average Stroke Rate:    uint8 (we don't send this)
+        Bit 2 — Total Distance:         uint24 LE, meters
+        Bit 3 — Instantaneous Pace:     uint16, seconds/500m
+        Bit 5 — Instantaneous Power:    int16, watts
+        Bit 9 — Heart Rate:             uint8, BPM
+
+    Note: bit 0 = 0 means "More Data = false", i.e. the base fields
+    (Instantaneous Stroke Rate + Stroke Count) ARE present.  Setting bit 1
+    would signal an *additional* Average Stroke Rate field — do NOT set it
+    unless you also write that extra uint8, or clients will mis-parse every
+    subsequent field and crash.
 
     Returns:
         bytes for the Rower Data characteristic value.
@@ -72,15 +81,14 @@ def pack_rower_data(metrics: RowingMetrics) -> bytes:
     flags = 0
     data = bytearray()
 
-    # Stroke Rate (uint8 × 2 resolution) + Stroke Count (uint16)
-    # These are always present (part of the base fields when flag bit 1 is set)
+    # Base fields — always present (bit 0 = 0 signals their presence).
+    # No flag bit needed; writing them unconditionally is correct per spec.
     stroke_rate_raw = 0
     stroke_count = 0
     if metrics.stroke_rate is not None and metrics.stroke_rate > 0:
         stroke_rate_raw = min(int(round(metrics.stroke_rate * 2)), 255)
     if metrics.stroke_count is not None:
         stroke_count = min(metrics.stroke_count, 0xFFFF)
-    flags |= FLAG_AVG_STROKE_RATE
     data.extend(struct.pack("<B", stroke_rate_raw))
     data.extend(struct.pack("<H", stroke_count))
 
