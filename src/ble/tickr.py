@@ -246,7 +246,11 @@ class TickrReader:
         locks on quickly after connect.
         """
         if not self._rr_buffer:
-            self._rr_buffer.extend(rr_intervals)
+            # Seed with physiologically plausible intervals only (≤ 200 BPM).
+            # Short intervals from double-counted beats (poor initial contact,
+            # TICKR firmware quirk) would corrupt the median baseline and then
+            # cause all subsequent valid intervals to be rejected as outliers.
+            self._rr_buffer.extend(rr for rr in rr_intervals if rr >= 300)
             return
 
         sorted_buf = sorted(self._rr_buffer)

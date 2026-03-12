@@ -135,7 +135,9 @@ export function LiveMetrics({ metrics, workoutState }: LiveMetricsProps) {
 
   const strokeRateForDisplay = effectiveStrokeRate;
 
-  if (strokeRateForDisplay != null) {
+  // Only record active stroke rates — zeros from the decay interval would
+  // scale the Y-axis down to 0 and make the sparkline appear to bottom out.
+  if (strokeRateForDisplay != null && strokeRateForDisplay > 0) {
     const history = strokeRateHistoryRef.current;
     history.push(strokeRateForDisplay);
     if (history.length > 60) history.shift();
