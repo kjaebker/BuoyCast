@@ -80,6 +80,7 @@ Before starting any task, set its status to `in_progress`. Mark `done` when comp
 | 6.2 | FTMS byte packing â€” flags field, stroke rate uint8 (Ã—2), distance uint24, pace uint16, power int16, HR uint8 conditional | done |
 | 6.3 | Tests â€” FTMS packing unit tests (`tests/unit/test_ftms_packing.py`) + manual Peloton connection checklist | done |
 | 6.4 | Peloton integration â€” add Elapsed Time (bit 11) and Expended Energy (bit 8) to Rower Data packing so Peloton post-workout summary shows calories and duration | done |
+| 6.5 | Peloton pairing â€” BlueZ auto-accept pairing agent (dbus-next/dbus-fast), Training Status (0x2AD6), Control Point (0x2AD9) Request Control handshake, Machine Status (0x2ADA) | done |
 
 **Phase 6 exit criteria:** `pytest tests/unit/test_ftms_packing.py` passes. Manual BLE connection verified with Peloton app on device.
 

@@ -22,6 +22,18 @@ logger = logging.getLogger(__name__)
 FTMS_SERVICE_UUID = "00001826-0000-1000-8000-00805f9b34fb"
 ROWER_DATA_CHAR_UUID = "00002ad1-0000-1000-8000-00805f9b34fb"
 FITNESS_MACHINE_FEATURE_UUID = "00002acc-0000-1000-8000-00805f9b34fb"
+TRAINING_STATUS_CHAR_UUID = "00002ad6-0000-1000-8000-00805f9b34fb"
+CONTROL_POINT_CHAR_UUID = "00002ad9-0000-1000-8000-00805f9b34fb"
+MACHINE_STATUS_CHAR_UUID = "00002ada-0000-1000-8000-00805f9b34fb"
+
+# BlueZ pairing agent D-Bus path
+_AGENT_PATH = "/com/buoycast/pairingagent"
+
+# --- Initial characteristic values ---
+# Training Status: flags=0x00 (no string), status=0x01 (Idle)
+_TRAINING_STATUS_IDLE = bytearray([0x00, 0x01])
+# Machine Status: OpCode 0x04 = Machine Stopped or Paused by Safety Key
+_MACHINE_STATUS_STOPPED = bytearray([0x04])
 
 # --- Fitness Machine Feature value (0x2ACC) ---
 # Reports which fields the rower can provide, as two uint32 LE values:
@@ -167,6 +179,7 @@ class FTMSBroadcaster:
         self._running = False
         self._task: asyncio.Task[None] | None = None
         self._server: object | None = None  # bless.BlessServer, lazily imported
+        self._dbus_bus: object | None = None  # dbus-next/dbus-fast MessageBus for pairing agent
         self._latest_data: bytes = pack_rower_data(
             RowingMetrics(
                 timestamp=__import__("datetime").datetime.now(
@@ -200,6 +213,10 @@ class FTMSBroadcaster:
                 exc,
                 exc_info=True,
             )
+            return
+
+        # Register pairing agent after GATT server is up so BlueZ is ready.
+        await self._register_pairing_agent()
 
     async def stop(self) -> None:
         """Stop the broadcaster."""
@@ -218,6 +235,13 @@ class FTMSBroadcaster:
             await self._teardown_ble()
         except Exception:
             pass
+
+        if self._dbus_bus is not None:
+            try:
+                self._dbus_bus.disconnect()
+            except Exception:
+                pass
+            self._dbus_bus = None
 
     async def _run_loop(self) -> None:
         """Process merged metrics and update characteristic."""
@@ -303,10 +327,57 @@ class FTMSBroadcaster:
                     GATTAttributePermissions.readable,
                 )
 
+                # Training Status (0x2AD6) — READ + NOTIFY
+                # Peloton checks this to confirm the machine is reachable.
+                await server.add_new_characteristic(
+                    FTMS_SERVICE_UUID,
+                    TRAINING_STATUS_CHAR_UUID,
+                    GATTCharacteristicProperties.read | GATTCharacteristicProperties.notify,
+                    bytearray(_TRAINING_STATUS_IDLE),
+                    GATTAttributePermissions.readable,
+                )
+
+                # Fitness Machine Control Point (0x2AD9) — WRITE + NOTIFY
+                # Peloton sends a "Request Control" command (OpCode 0x00) at session
+                # start. We accept it and respond with Success so the session proceeds.
+                # Using NOTIFY instead of INDICATE since bless maps both via BlueZ.
+                await server.add_new_characteristic(
+                    FTMS_SERVICE_UUID,
+                    CONTROL_POINT_CHAR_UUID,
+                    GATTCharacteristicProperties.write | GATTCharacteristicProperties.notify,
+                    bytearray(),
+                    GATTAttributePermissions.writeable,
+                )
+
+                # Machine Status (0x2ADA) — READ + NOTIFY
+                # Reports machine state; initial value = stopped/idle.
+                await server.add_new_characteristic(
+                    FTMS_SERVICE_UUID,
+                    MACHINE_STATUS_CHAR_UUID,
+                    GATTCharacteristicProperties.read | GATTCharacteristicProperties.notify,
+                    bytearray(_MACHINE_STATUS_STOPPED),
+                    GATTAttributePermissions.readable,
+                )
+
                 # bless requires a read callback — without it, any client READ
                 # raises BlessError("Read Callback is undefined") and crashes
                 # the D-Bus connection. Just return the characteristic's stored value.
                 server.read_request_func = lambda char: char.value
+
+                # Handle Control Point writes: echo back a Success response so
+                # Peloton's "Request Control" handshake completes successfully.
+                def _cp_write(char: object, value: bytearray) -> None:
+                    if getattr(char, "uuid", "").lower() == CONTROL_POINT_CHAR_UUID:
+                        opcode = value[0] if value else 0x00
+                        # Response Code (0x80) + request opcode + Result Success (0x01)
+                        char.value = bytearray([0x80, opcode, 0x01])  # type: ignore[attr-defined]
+                        if self._server is not None:
+                            self._server.update_value(  # type: ignore[attr-defined]
+                                FTMS_SERVICE_UUID, CONTROL_POINT_CHAR_UUID
+                            )
+                        logger.debug("FTMS: Control Point opcode=0x%02x → Success", opcode)
+
+                server.write_request_func = _cp_write
 
                 await server.start()
                 self._server = server
@@ -336,6 +407,94 @@ class FTMSBroadcaster:
                     )
 
         raise last_exc  # type: ignore[misc]
+
+    async def _register_pairing_agent(self) -> None:
+        """Register a BlueZ pairing agent that auto-accepts all bond requests.
+
+        Without this, Peloton can fail silently if it initiates a pairing
+        sequence — BlueZ rejects the request because no agent is registered.
+        We use dbus-next (or its successor dbus-fast, same API) to talk
+        directly to BlueZ's AgentManager1 interface.
+
+        Fails gracefully: if neither library is installed, or if registration
+        fails (e.g. non-root, no BlueZ), we log a warning and continue.
+        The GATT server keeps running; pairing simply won't auto-accept.
+        """
+        try:
+            try:
+                from dbus_next.aio import MessageBus  # type: ignore[import]
+                from dbus_next import BusType  # type: ignore[import]
+                from dbus_next.service import ServiceInterface, method  # type: ignore[import]
+            except ImportError:
+                from dbus_fast.aio import MessageBus  # type: ignore[import]
+                from dbus_fast import BusType  # type: ignore[import]
+                from dbus_fast.service import ServiceInterface, method  # type: ignore[import]
+        except ImportError:
+            logger.warning(
+                "FTMS: dbus-next/dbus-fast not available — pairing agent not registered. "
+                "Install with: pip install dbus-next"
+            )
+            return
+
+        try:
+            class _PairingAgent(ServiceInterface):
+                """BlueZ Agent1 implementation — auto-accepts everything."""
+
+                def __init__(self) -> None:
+                    super().__init__("org.bluez.Agent1")
+
+                @method()  # type: ignore[misc]
+                def Release(self) -> None:  # noqa: N802
+                    pass
+
+                @method()  # type: ignore[misc]
+                def RequestPinCode(self, device: "o") -> "s":  # type: ignore[name-defined]  # noqa: N802, F821
+                    return "0000"
+
+                @method()  # type: ignore[misc]
+                def DisplayPinCode(self, device: "o", pincode: "s") -> None:  # type: ignore[name-defined]  # noqa: N802, F821
+                    pass
+
+                @method()  # type: ignore[misc]
+                def RequestPasskey(self, device: "o") -> "u":  # type: ignore[name-defined]  # noqa: N802, F821
+                    return 0
+
+                @method()  # type: ignore[misc]
+                def DisplayPasskey(self, device: "o", passkey: "u", entered: "q") -> None:  # type: ignore[name-defined]  # noqa: N802, F821
+                    pass
+
+                @method()  # type: ignore[misc]
+                def RequestConfirmation(self, device: "o", passkey: "u") -> None:  # type: ignore[name-defined]  # noqa: N802, F821
+                    pass  # auto-accept
+
+                @method()  # type: ignore[misc]
+                def RequestAuthorization(self, device: "o") -> None:  # type: ignore[name-defined]  # noqa: N802, F821
+                    pass  # auto-accept
+
+                @method()  # type: ignore[misc]
+                def AuthorizeService(self, device: "o", uuid: "s") -> None:  # type: ignore[name-defined]  # noqa: N802, F821
+                    pass  # auto-accept
+
+                @method()  # type: ignore[misc]
+                def Cancel(self) -> None:  # noqa: N802
+                    pass
+
+            bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
+            agent = _PairingAgent()
+            bus.export(_AGENT_PATH, agent)
+
+            introspection = await bus.introspect("org.bluez", "/org/bluez")
+            proxy = bus.get_proxy_object("org.bluez", "/org/bluez", introspection)
+            agent_mgr = proxy.get_interface("org.bluez.AgentManager1")
+
+            await agent_mgr.call_register_agent(_AGENT_PATH, "NoInputNoOutput")
+            await agent_mgr.call_request_default_agent(_AGENT_PATH)
+
+            self._dbus_bus = bus  # keep reference alive so agent stays registered
+            logger.info("FTMS: BlueZ pairing agent registered at %s (auto-accept)", _AGENT_PATH)
+
+        except Exception as exc:
+            logger.warning("FTMS: pairing agent registration failed: %s", exc)
 
     async def _teardown_ble(self) -> None:
         """Stop BlueZ advertising and unregister the GATT application."""
