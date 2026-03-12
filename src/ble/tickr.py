@@ -202,10 +202,7 @@ class TickrReader:
                 await self._disconnect()
 
             if self._running:
-                if self._consecutive_failures <= 1:
-                    logger.info("TICKR reconnecting in %.1fs", backoff)
-                else:
-                    logger.debug("TICKR reconnecting in %.1fs", backoff)
+                logger.debug("TICKR reconnecting in %.1fs", backoff)
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, self._backoff_max_s)
 
