@@ -131,6 +131,7 @@ class TickrReader:
         self._running = False
         self._connected = False
         self._task: asyncio.Task[None] | None = None
+        self._consecutive_failures = 0
         self._backoff_base_s = backoff_base_s
         self._backoff_max_s = backoff_max_s
         self._poll_interval_s = poll_interval_s
@@ -181,6 +182,7 @@ class TickrReader:
                     self._ble = client
                 await self._connect()
                 backoff = self._backoff_base_s  # Reset on successful connection
+                self._consecutive_failures = 0
 
                 # Stay connected until disconnect or stop
                 while self._running and self._ble.is_connected:
@@ -190,13 +192,20 @@ class TickrReader:
                 await self._disconnect()
 
             except (OSError, Exception) as e:
+                self._consecutive_failures += 1
                 msg = str(e) or type(e).__name__
-                logger.warning("TICKR connection error: %s", msg)
+                if self._consecutive_failures == 1:
+                    logger.warning("TICKR connection error: %s", msg)
+                else:
+                    logger.debug("TICKR reconnect attempt %d: %s", self._consecutive_failures, msg)
                 logger.debug("TICKR connection error details:", exc_info=True)
                 await self._disconnect()
 
             if self._running:
-                logger.info("TICKR reconnecting in %.1fs", backoff)
+                if self._consecutive_failures <= 1:
+                    logger.info("TICKR reconnecting in %.1fs", backoff)
+                else:
+                    logger.debug("TICKR reconnecting in %.1fs", backoff)
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, self._backoff_max_s)
 
