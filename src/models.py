@@ -1,6 +1,6 @@
 """Pydantic v2 data models for BuoyCast."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
@@ -84,6 +84,13 @@ class WorkoutRecord(BaseModel):
     strava_activity_id: int | None = None
     strava_error: str | None = None
     fit_file_path: str | None = None
+
+
+class AppSettings(BaseModel):
+    """Application-level settings."""
+
+    include_hr_in_strava_upload: bool = True
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class WSMessage(BaseModel):

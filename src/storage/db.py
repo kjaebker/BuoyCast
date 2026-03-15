@@ -74,6 +74,20 @@ MIGRATIONS: list[tuple[int, str, str]] = [
         );
         """,
     ),
+    (
+        3,
+        "app settings",
+        """
+        CREATE TABLE IF NOT EXISTS app_settings (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            include_hr_in_strava_upload BOOLEAN NOT NULL DEFAULT 1,
+            updated_at TEXT NOT NULL
+        );
+
+        INSERT OR IGNORE INTO app_settings (id, include_hr_in_strava_upload, updated_at)
+        VALUES (1, 1, datetime('now'));
+        """,
+    ),
 ]
 
 
