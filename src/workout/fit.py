@@ -43,6 +43,7 @@ def generate_fit(
     workout: WorkoutRecord,
     strokes: list[StrokeRecord],
     output_dir: str | Path = "data/fit",
+    include_hr: bool = True,
 ) -> Path:
     """Generate a FIT file from a completed workout and its stroke data.
 
@@ -50,6 +51,7 @@ def generate_fit(
         workout: The completed WorkoutRecord with summary stats.
         strokes: List of StrokeRecord entries for the workout.
         output_dir: Directory to write the FIT file to.
+        include_hr: Whether to include heart rate data in the FIT file.
 
     Returns:
         Path to the generated FIT file.
@@ -84,7 +86,7 @@ def generate_fit(
         record = RecordMessage()
         record.timestamp = _to_fit_timestamp(stroke.ts)
 
-        if stroke.heart_rate_bpm is not None:
+        if include_hr and stroke.heart_rate_bpm is not None:
             record.heart_rate = stroke.heart_rate_bpm
 
         if stroke.stroke_rate > 0:
@@ -116,10 +118,11 @@ def generate_fit(
     lap.total_elapsed_time = elapsed_ms
     lap.total_timer_time = elapsed_ms
     lap.total_distance = workout.total_distance_m
-    if workout.avg_heart_rate is not None:
-        lap.avg_heart_rate = workout.avg_heart_rate
-    if workout.max_heart_rate is not None:
-        lap.max_heart_rate = workout.max_heart_rate
+    if include_hr:
+        if workout.avg_heart_rate is not None:
+            lap.avg_heart_rate = workout.avg_heart_rate
+        if workout.max_heart_rate is not None:
+            lap.max_heart_rate = workout.max_heart_rate
     if workout.avg_stroke_rate is not None:
         lap.avg_cadence = int(workout.avg_stroke_rate)
     if workout.avg_power_watts is not None:
@@ -138,10 +141,11 @@ def generate_fit(
     session.total_strokes = workout.total_strokes
     session.total_calories = workout.calories
     session.num_laps = 1
-    if workout.avg_heart_rate is not None:
-        session.avg_heart_rate = workout.avg_heart_rate
-    if workout.max_heart_rate is not None:
-        session.max_heart_rate = workout.max_heart_rate
+    if include_hr:
+        if workout.avg_heart_rate is not None:
+            session.avg_heart_rate = workout.avg_heart_rate
+        if workout.max_heart_rate is not None:
+            session.max_heart_rate = workout.max_heart_rate
     if workout.avg_stroke_rate is not None:
         session.avg_cadence = int(workout.avg_stroke_rate)
     if workout.avg_power_watts is not None:

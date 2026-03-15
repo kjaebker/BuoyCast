@@ -34,11 +34,20 @@ async def upload_workout(
     db: Database,
     auth: StravaAuth,
     fit_dir: str = "data/fit",
+    include_hr: bool = True,
     http_client: httpx.AsyncClient | None = None,
 ) -> bool:
     """Upload a workout's FIT file to Strava.
 
     Returns True on success, False on failure.
+
+    Args:
+        workout_id: ID of the workout to upload
+        db: Database instance
+        auth: Strava authentication manager
+        fit_dir: Directory for FIT file output
+        include_hr: Whether to include heart rate data in the FIT file
+        http_client: Optional HTTP client for testing
 
     Steps:
     1. Set status to UPLOADING
@@ -72,7 +81,7 @@ async def upload_workout(
         fit_path = workout.fit_file_path
         if fit_path is None or not Path(fit_path).exists():
             strokes = await get_strokes(db, workout_id)
-            fit_path = str(generate_fit(workout, strokes, output_dir=fit_dir))
+            fit_path = str(generate_fit(workout, strokes, output_dir=fit_dir, include_hr=include_hr))
             await update_workout(db, workout_id, fit_file_path=fit_path)
 
         # Upload
