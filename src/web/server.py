@@ -18,6 +18,7 @@ from starlette.requests import Request
 
 from src.events import EventBus, EventType
 from src.models import RowingMetrics, WorkoutState, WSMessage
+from src.web.routes.settings import router as settings_router
 from src.web.routes.strava import router as strava_router
 from src.web.routes.workouts import router as workouts_router
 from src.workout.state import InvalidTransitionError, WorkoutStateMachine
@@ -103,6 +104,7 @@ def create_app(
     # Include routers
     app.include_router(workouts_router, prefix="/api")
     app.include_router(strava_router, prefix="/api")
+    app.include_router(settings_router, prefix="/api")
 
     # Static file serving for the dashboard SPA
     _dist = Path(__file__).parent.parent.parent / "dashboard" / "dist"
