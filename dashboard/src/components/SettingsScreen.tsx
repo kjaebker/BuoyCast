@@ -115,10 +115,11 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
       setUpdateInfo(data);
     } catch {
       setUpdateInfo({
-        current_version: "unknown",
-        latest_version: null,
+        current_sha: null,
+        remote_sha: null,
         update_available: false,
-        release_notes: null,
+        commits_behind: 0,
+        latest_commit_message: null,
         error: "Failed to reach update server",
       });
     } finally {
