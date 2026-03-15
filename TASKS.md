@@ -33,7 +33,7 @@ Add new tasks here as they arise.
 | E3 | Backend: Device control APIs (S4 reset, HR toggle, system restart, logs) | done | 2026-03-15 |
 | E4 | Backend: Fix calories tracking in workout recorder | done | 2026-03-15 |
 | E5 | Backend: Add include_hr parameter to FIT generation & upload | done | 2026-03-15 |
-| E6 | Frontend: Add Settings page with device controls & Strava info | available | 2026-03-15 |
+| E6 | Frontend: Add Settings page with device controls & Strava info | done | 2026-03-15 |
 | E7 | Frontend: Add gear icon to StatusBar + navigation | available | 2026-03-15 |
 | E8 | Frontend: Conditional HR tile rendering (5s timeout) | available | 2026-03-15 |
 | E9 | Frontend: Add HR data checkbox to CompletionScreen upload | available | 2026-03-15 |
