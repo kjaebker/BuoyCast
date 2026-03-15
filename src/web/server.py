@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import subprocess
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -25,45 +26,106 @@ from src.workout.state import InvalidTransitionError, WorkoutStateMachine
 
 logger = logging.getLogger(__name__)
 
-GITHUB_REPO = "kjaebker/BuoyCast"
-GITHUB_TOKEN_PATH = Path("/opt/buoycast/.github-token")
+INSTALL_DIR = Path("/opt/buoycast")
 
 
-def _get_github_token() -> str | None:
-    """Read GitHub token from file or environment. Required for private repos."""
-    import os
+async def check_git_updates() -> dict:
+    """Fetch from origin and compare local HEAD vs remote. Returns update info dict."""
+    import subprocess
 
-    token = os.environ.get("GITHUB_TOKEN")
-    if token:
-        return token
-    if GITHUB_TOKEN_PATH.exists():
-        return GITHUB_TOKEN_PATH.read_text().strip()
-    return None
+    project_root = Path(__file__).parent.parent.parent
 
+    # Find the git repo — either /opt/buoycast or the source dir recorded during install
+    git_dir: Path | None = None
+    if (INSTALL_DIR / ".git").exists():
+        git_dir = INSTALL_DIR
+    elif (INSTALL_DIR / ".source_dir").exists():
+        source = INSTALL_DIR.joinpath(".source_dir").read_text().strip()
+        if Path(source, ".git").exists():
+            git_dir = Path(source)
+    # Fallback for dev: use the project root
+    if git_dir is None and (project_root / ".git").exists():
+        git_dir = project_root
 
-async def fetch_latest_release() -> tuple[dict | None, str | None]:
-    """Fetch the latest release from GitHub. Returns (release_dict, error_string)."""
-    import httpx
-
-    headers: dict[str, str] = {"Accept": "application/vnd.github+json"}
-    token = _get_github_token()
-    if token:
-        headers["Authorization"] = f"token {token}"
+    if git_dir is None:
+        return {
+            "current_sha": None,
+            "remote_sha": None,
+            "update_available": False,
+            "commits_behind": 0,
+            "latest_commit_message": None,
+            "error": "No git repository found",
+        }
 
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(
-                f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest",
-                headers=headers,
-            )
-            if resp.status_code == 404:
-                hint = " (is GITHUB_TOKEN set? Private repos need auth)" if not token else ""
-                return None, f"No releases found{hint}"
-            resp.raise_for_status()
-            return resp.json(), None
+        # Fetch latest from origin (non-blocking via asyncio)
+        proc = await asyncio.create_subprocess_exec(
+            "git", "-C", str(git_dir), "fetch", "origin", "main", "--quiet",
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
+        _, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
+        if proc.returncode != 0:
+            return {
+                "current_sha": None,
+                "remote_sha": None,
+                "update_available": False,
+                "commits_behind": 0,
+                "latest_commit_message": None,
+                "error": f"git fetch failed: {stderr.decode().strip()}",
+            }
+
+        # Get local and remote HEAD
+        local = subprocess.run(
+            ["git", "-C", str(git_dir), "rev-parse", "HEAD"],
+            capture_output=True, text=True, timeout=5,
+        ).stdout.strip()
+
+        remote = subprocess.run(
+            ["git", "-C", str(git_dir), "rev-parse", "origin/main"],
+            capture_output=True, text=True, timeout=5,
+        ).stdout.strip()
+
+        # Count commits behind
+        behind_output = subprocess.run(
+            ["git", "-C", str(git_dir), "rev-list", "--count", f"HEAD..origin/main"],
+            capture_output=True, text=True, timeout=5,
+        ).stdout.strip()
+        commits_behind = int(behind_output) if behind_output.isdigit() else 0
+
+        # Get latest remote commit message
+        latest_msg = subprocess.run(
+            ["git", "-C", str(git_dir), "log", "origin/main", "-1", "--format=%s"],
+            capture_output=True, text=True, timeout=5,
+        ).stdout.strip()
+
+        return {
+            "current_sha": local[:8],
+            "remote_sha": remote[:8],
+            "update_available": local != remote,
+            "commits_behind": commits_behind,
+            "latest_commit_message": latest_msg if local != remote else None,
+            "error": None,
+        }
+    except asyncio.TimeoutError:
+        return {
+            "current_sha": None,
+            "remote_sha": None,
+            "update_available": False,
+            "commits_behind": 0,
+            "latest_commit_message": None,
+            "error": "git fetch timed out",
+        }
     except Exception as e:
         logger.warning("Update check failed: %s", e)
-        return None, f"Failed to check: {e}"
+        return {
+            "current_sha": None,
+            "remote_sha": None,
+            "update_available": False,
+            "commits_behind": 0,
+            "latest_commit_message": None,
+            "error": f"Failed to check: {e}",
+        }
 
 
 class AppState:
@@ -259,51 +321,22 @@ def create_app(
 
     @app.get("/api/system/update/check")
     async def check_for_update():
-        """Check GitHub Releases for a newer version.
+        """Check if new commits are available on origin/main.
 
-        Compares the installed VERSION file against the latest GitHub Release tag.
-        Returns current version, latest version, and whether an update is available.
+        Runs git fetch and compares local HEAD vs remote HEAD.
         """
-        # Read installed version
-        version_file = Path("/opt/buoycast/VERSION")
-        if not version_file.exists():
-            # Fallback: try local VERSION in project root
-            version_file = Path(__file__).parent.parent.parent / "VERSION"
-        current = version_file.read_text().strip() if version_file.exists() else "unknown"
-
-        release, error = await fetch_latest_release()
-        if error:
-            return {
-                "current_version": current,
-                "latest_version": None,
-                "update_available": False,
-                "release_notes": None,
-                "error": error,
-            }
-
-        latest = release.get("tag_name", "unknown")
-        update_available = latest != current and current != "unknown"
-        return {
-            "current_version": current,
-            "latest_version": latest,
-            "update_available": update_available,
-            "release_notes": release.get("body", ""),
-            "published_at": release.get("published_at"),
-            "error": None,
-        }
+        return await check_git_updates()
 
     @app.post("/api/system/update")
     async def trigger_update():
-        """Download the latest release bundle and apply it.
+        """Pull latest code and restart the service.
 
-        Runs update.sh --release in the background. The service will restart
+        Runs update.sh in the background. The service will restart
         automatically after the update completes, so the dashboard will
         briefly disconnect and reconnect.
         """
-        import subprocess
-
         # Check that update.sh exists
-        update_script = Path("/opt/buoycast/update.sh")
+        update_script = INSTALL_DIR / "update.sh"
         if not update_script.exists():
             update_script = Path(__file__).parent.parent.parent / "update.sh"
         if not update_script.exists():
@@ -318,17 +351,15 @@ def create_app(
         asyncio.create_task(_run_update(str(update_script)))
         return {
             "status": "update_started",
-            "message": "Downloading and installing update. The service will restart automatically.",
+            "message": "Pulling latest code and restarting. The service will restart automatically.",
         }
 
     async def _run_update(script_path: str):
-        """Run update.sh --release in a subprocess after a short delay."""
-        import subprocess
-
+        """Run update.sh in a subprocess after a short delay."""
         await asyncio.sleep(1)  # Let the response be sent first
         try:
             subprocess.Popen(
-                ["sudo", "bash", script_path, "--release"],
+                ["sudo", "bash", script_path],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,  # Detach from our process group

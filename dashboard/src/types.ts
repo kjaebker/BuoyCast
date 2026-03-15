@@ -115,10 +115,10 @@ export type AppSettings = {
 };
 
 export type UpdateInfo = {
-  current_version: string;
-  latest_version: string | null;
+  current_sha: string | null;
+  remote_sha: string | null;
   update_available: boolean;
-  release_notes: string | null;
-  published_at?: string;
+  commits_behind: number;
+  latest_commit_message: string | null;
   error: string | null;
 };
