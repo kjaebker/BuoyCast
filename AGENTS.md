@@ -30,16 +30,16 @@ All work is tracked in `TASKS.md`. Follow this protocol every time.
 
 ## Workflow
 - Commit messages follow conventional commits: `feat:`, `fix:`, `chore:`, `test:`, etc.
-- Run the full test suite before committing: `.venv/Scripts/python.exe -m pytest tests/ -v`
+- Run the full test suite before committing: `pytest tests/ -q`
 - Follow the phases in `docs/implementation-plan.md` — do not skip ahead
 
 ---
 
 ## Build/Run Commands
-- Python tests: `.venv/Scripts/python.exe -m pytest tests/ -v`
-- Dashboard build: `export PATH="/c/Program Files/nodejs:$PATH" && npm run build` (from dashboard/)
+- Python tests: `pytest tests/ -v`
+- Dashboard build: `npm run build` (from dashboard/)
 - Dashboard type-check: `npx tsc --noEmit` (from dashboard/)
-- Install Python deps: `.venv/Scripts/python.exe -m pip install -e ".[dev]"`
+- Install Python deps: `pip install -e ".[dev]"` (handled automatically by `nix develop`)
 
 ---
 

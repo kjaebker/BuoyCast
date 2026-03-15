@@ -152,7 +152,7 @@ Open the dashboard at `http://waterrower.local:8080` — the HR tile in the stat
 On your development machine (not the Pi):
 
 ```bash
-.venv/Scripts/python.exe -m pytest tests/unit/test_ftms_packing.py -v
+pytest tests/unit/test_ftms_packing.py -v
 ```
 
 **Expected:** all tests pass
