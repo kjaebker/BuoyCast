@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { Wifi, WifiOff, Heart, HeartOff, Upload, UploadCloud } from "lucide-react";
+import { Wifi, WifiOff, Heart, HeartOff, Upload, UploadCloud, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getStravaStatus } from "@/lib/api";
 import type { StravaStatus } from "@/types";
@@ -13,6 +13,7 @@ import type { WorkoutSocketState } from "@/hooks/useWorkoutSocket";
 type StatusBarProps = {
   connectionStatus: WorkoutSocketState["connectionStatus"];
   metrics: WorkoutSocketState["metrics"];
+  onOpenSettings: () => void;
 };
 
 type PillProps = {
@@ -40,7 +41,7 @@ function StatusPill({ active, activeClassName, inactiveClassName, icon, label }:
   );
 }
 
-export function StatusBar({ connectionStatus, metrics }: StatusBarProps) {
+export function StatusBar({ connectionStatus, metrics, onOpenSettings }: StatusBarProps) {
   const [strava, setStrava] = useState<StravaStatus | null>(null);
 
   useEffect(() => {
@@ -71,7 +72,7 @@ export function StatusBar({ connectionStatus, metrics }: StatusBarProps) {
           label={hrValue != null ? `${hrValue} bpm` : "HR waiting"}
         />
 
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2.5">
           <StatusPill
             active={Boolean(strava?.connected)}
             activeClassName="border-[color-mix(in_oklch,var(--color-primary)_40%,transparent)] bg-[color-mix(in_oklch,var(--color-primary)_18%,transparent)] text-primary"
@@ -79,6 +80,13 @@ export function StatusBar({ connectionStatus, metrics }: StatusBarProps) {
             icon={strava?.connected ? <UploadCloud className="h-3.5 w-3.5" /> : <Upload className="h-3.5 w-3.5" />}
             label={strava?.connected ? "Strava ready" : "No Strava"}
           />
+          <button
+            onClick={onOpenSettings}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/80 bg-card/70 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+            aria-label="Settings"
+          >
+            <Settings className="h-3.5 w-3.5" />
+          </button>
         </div>
       </div>
     </div>
