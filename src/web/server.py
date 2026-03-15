@@ -58,9 +58,13 @@ async def check_git_updates() -> dict:
         }
 
     try:
+        # Run git commands as the pi user to avoid permission issues
+        # (the service runs as pi, but .git may have mixed ownership)
+        git_cmd = ["sudo", "-u", "pi", "git", "-C", str(git_dir)]
+
         # Fetch latest from origin (non-blocking via asyncio)
         proc = await asyncio.create_subprocess_exec(
-            "git", "-C", str(git_dir), "fetch", "origin", "main", "--quiet",
+            *git_cmd, "fetch", "origin", "main", "--quiet",
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
         )
@@ -77,25 +81,25 @@ async def check_git_updates() -> dict:
 
         # Get local and remote HEAD
         local = subprocess.run(
-            ["git", "-C", str(git_dir), "rev-parse", "HEAD"],
+            [*git_cmd, "rev-parse", "HEAD"],
             capture_output=True, text=True, timeout=5,
         ).stdout.strip()
 
         remote = subprocess.run(
-            ["git", "-C", str(git_dir), "rev-parse", "origin/main"],
+            [*git_cmd, "rev-parse", "origin/main"],
             capture_output=True, text=True, timeout=5,
         ).stdout.strip()
 
         # Count commits behind
         behind_output = subprocess.run(
-            ["git", "-C", str(git_dir), "rev-list", "--count", f"HEAD..origin/main"],
+            [*git_cmd, "rev-list", "--count", f"HEAD..origin/main"],
             capture_output=True, text=True, timeout=5,
         ).stdout.strip()
         commits_behind = int(behind_output) if behind_output.isdigit() else 0
 
         # Get latest remote commit message
         latest_msg = subprocess.run(
-            ["git", "-C", str(git_dir), "log", "origin/main", "-1", "--format=%s"],
+            [*git_cmd, "log", "origin/main", "-1", "--format=%s"],
             capture_output=True, text=True, timeout=5,
         ).stdout.strip()
 
