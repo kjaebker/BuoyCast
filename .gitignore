@@ -189,7 +189,6 @@ dashboard/node_modules/
 config.toml
 *.fit
 data/
-.github-token
 
 # Nix / direnv
 .direnv/

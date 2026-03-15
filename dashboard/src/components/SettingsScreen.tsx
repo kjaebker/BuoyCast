@@ -347,7 +347,7 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold text-foreground">
                       {updateInfo?.update_available
-                        ? `Update available: ${updateInfo.latest_version}`
+                        ? `${updateInfo.commits_behind} update${updateInfo.commits_behind !== 1 ? "s" : ""} available`
                         : updateInfo && !updateInfo.error
                           ? "Up to date"
                           : updateInfo?.error
@@ -355,21 +355,18 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
                             : "BuoyCast"}
                     </div>
                     <div className="text-[0.72rem] uppercase tracking-[0.18em] text-muted-foreground">
-                      {updateInfo
-                        ? `Installed: ${updateInfo.current_version}`
+                      {updateInfo?.current_sha
+                        ? `Running: ${updateInfo.current_sha}`
                         : "Check for available updates"}
                     </div>
                   </div>
                 </div>
 
-                {/* Release notes (if update available) */}
-                {updateInfo?.update_available && updateInfo.release_notes && (
-                  <div className="rounded-xl border border-border/60 bg-black/30 p-3 max-h-32 overflow-auto">
-                    <div className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground mb-1">
-                      Release Notes
-                    </div>
-                    <p className="text-sm text-foreground/80 whitespace-pre-wrap">
-                      {updateInfo.release_notes}
+                {/* Latest commit message (if update available) */}
+                {updateInfo?.update_available && updateInfo.latest_commit_message && (
+                  <div className="rounded-xl border border-border/60 bg-black/30 px-3 py-2">
+                    <p className="text-sm text-foreground/80">
+                      Latest: {updateInfo.latest_commit_message}
                     </p>
                   </div>
                 )}
