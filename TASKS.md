@@ -35,5 +35,5 @@ Add new tasks here as they arise.
 | E5 | Backend: Add include_hr parameter to FIT generation & upload | done | 2026-03-15 |
 | E6 | Frontend: Add Settings page with device controls & Strava info | done | 2026-03-15 |
 | E7 | Frontend: Add gear icon to StatusBar + navigation | done | 2026-03-15 |
-| E8 | Frontend: Conditional HR tile rendering (5s timeout) | available | 2026-03-15 |
+| E8 | Frontend: Conditional HR tile rendering (5s timeout) | done | 2026-03-15 |
 | E9 | Frontend: Add HR data checkbox to CompletionScreen upload | available | 2026-03-15 |
