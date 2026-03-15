@@ -391,3 +391,79 @@ class TestRecovery:
 
         resp = await client.get("/api/recovery")
         assert resp.json() == {"workout": None}
+
+
+class TestUpdateEndpoints:
+    """Tests for /api/system/update/check and /api/system/update."""
+
+    async def test_check_update_returns_structure(self, client, monkeypatch):
+        """GET /api/system/update/check returns expected fields."""
+        from src.web import server
+
+        async def mock_fetch():
+            return {
+                "tag_name": "v1.2.0",
+                "body": "Bug fixes and improvements",
+                "published_at": "2026-03-15T00:00:00Z",
+                "assets": [],
+            }, None
+
+        monkeypatch.setattr(server, "fetch_latest_release", mock_fetch)
+
+        resp = await client.get("/api/system/update/check")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "current_version" in data
+        assert "latest_version" in data
+        assert "update_available" in data
+        assert "release_notes" in data
+        assert "error" in data
+        assert data["latest_version"] == "v1.2.0"
+        assert data["release_notes"] == "Bug fixes and improvements"
+
+    async def test_check_update_handles_no_releases(self, client, monkeypatch):
+        """GET /api/system/update/check handles 404 (no releases)."""
+        from src.web import server
+
+        async def mock_fetch():
+            return None, "No releases found"
+
+        monkeypatch.setattr(server, "fetch_latest_release", mock_fetch)
+
+        resp = await client.get("/api/system/update/check")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["update_available"] is False
+        assert data["error"] == "No releases found"
+
+    async def test_check_update_handles_network_error(self, client, monkeypatch):
+        """GET /api/system/update/check handles network failures gracefully."""
+        from src.web import server
+
+        async def mock_fetch():
+            return None, "Failed to check: Network unreachable"
+
+        monkeypatch.setattr(server, "fetch_latest_release", mock_fetch)
+
+        resp = await client.get("/api/system/update/check")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["update_available"] is False
+        assert data["error"] is not None
+        assert "Network unreachable" in data["error"]
+
+    async def test_trigger_update_no_script(self, client, monkeypatch):
+        """POST /api/system/update returns 503 if update.sh is missing."""
+        from pathlib import Path
+
+        original_exists = Path.exists
+
+        def mock_exists(self):
+            if "update.sh" in str(self):
+                return False
+            return original_exists(self)
+
+        monkeypatch.setattr(Path, "exists", mock_exists)
+
+        resp = await client.post("/api/system/update")
+        assert resp.status_code == 503
