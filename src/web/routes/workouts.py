@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from src.models import StravaUploadStatus, WorkoutState
 from src.storage.queries import (
     delete_workout,
+    get_app_settings,
     get_incomplete_workout,
     get_strokes,
     get_workout,
@@ -17,6 +19,12 @@ from src.storage.queries import (
 from src.workout.state import InvalidTransitionError
 
 router = APIRouter()
+
+
+class UploadRequest(BaseModel):
+    """Request body for workout upload with optional HR override."""
+
+    include_hr: bool | None = None
 
 
 def _get_state(request: Request):
@@ -126,7 +134,7 @@ async def reset_workout(request: Request):
 
 
 @router.post("/workouts/{workout_id}/upload")
-async def upload_workout_endpoint(request: Request, workout_id: str):
+async def upload_workout_endpoint(request: Request, workout_id: str, body: UploadRequest | None = None):
     """Trigger Strava upload for a workout. Returns 202 Accepted."""
     state = _get_state(request)
     workout = await get_workout(state.db, workout_id)
@@ -140,6 +148,13 @@ async def upload_workout_endpoint(request: Request, workout_id: str):
             content={"detail": "Strava not configured"},
         )
 
+    # Determine include_hr from request or settings default
+    if body is not None and body.include_hr is not None:
+        include_hr = body.include_hr
+    else:
+        app_settings = await get_app_settings(state.db)
+        include_hr = app_settings.include_hr_in_strava_upload
+
     from src.strava.upload import upload_workout
     import asyncio
     import logging
@@ -147,7 +162,7 @@ async def upload_workout_endpoint(request: Request, workout_id: str):
     _logger = logging.getLogger(__name__)
 
     async def _run_upload():
-        ok = await upload_workout(workout_id, state.db, auth)
+        ok = await upload_workout(workout_id, state.db, auth, include_hr=include_hr)
         if ok:
             _logger.info("Strava upload task completed for workout %s", workout_id)
         else:

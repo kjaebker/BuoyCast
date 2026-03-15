@@ -8,11 +8,13 @@ import { WorkoutControls } from "@/components/WorkoutControls";
 import { CompletionScreen } from "@/components/CompletionScreen";
 import { WorkoutHistory } from "@/components/WorkoutHistory";
 import { RecoveryBanner } from "@/components/RecoveryBanner";
+import { SettingsScreen } from "@/components/SettingsScreen";
 import { Button } from "@/components/ui/button";
 
 function App() {
   const { metrics, workoutState, connectionStatus, dismissSummary } = useWorkoutSocket();
   const [showHistory, setShowHistory] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [historyKey, setHistoryKey] = useState(0);
 
   useWakeLock(workoutState);
@@ -28,7 +30,11 @@ function App() {
       <div className="pointer-events-none absolute right-[-4rem] top-28 h-48 w-48 rounded-full bg-[color-mix(in_oklch,var(--color-secondary)_36%,transparent)] blur-3xl" />
       <div className="pointer-events-none absolute left-[-5rem] top-72 h-56 w-56 rounded-full bg-[color-mix(in_oklch,var(--color-primary)_16%,transparent)] blur-3xl" />
 
-      <StatusBar connectionStatus={connectionStatus} metrics={metrics} />
+      <StatusBar
+        connectionStatus={connectionStatus}
+        metrics={metrics}
+        onOpenSettings={() => setShowSettings(true)}
+      />
 
       {connectionStatus === "disconnected" && (
         <div className="mx-4 mt-3 rounded-2xl border border-destructive/35 bg-destructive/12 px-4 py-3 text-center text-sm font-medium text-destructive-foreground shadow-[0_0_0_1px_color-mix(in_oklch,var(--color-destructive)_18%,transparent)]">
@@ -36,7 +42,9 @@ function App() {
         </div>
       )}
 
-      {workoutState === "SUMMARY" ? (
+      {showSettings ? (
+        <SettingsScreen onBack={() => setShowSettings(false)} />
+      ) : workoutState === "SUMMARY" ? (
         <CompletionScreen onDismiss={handleDismissCompletion} />
       ) : showHistory ? (
         <>

@@ -18,6 +18,7 @@ from starlette.requests import Request
 
 from src.events import EventBus, EventType
 from src.models import RowingMetrics, WorkoutState, WSMessage
+from src.web.routes.settings import router as settings_router
 from src.web.routes.strava import router as strava_router
 from src.web.routes.workouts import router as workouts_router
 from src.workout.state import InvalidTransitionError, WorkoutStateMachine
@@ -33,6 +34,7 @@ class AppState:
         self.state_machine: WorkoutStateMachine | None = None
         self.db: Any = None
         self.s4_reader: Any = None
+        self.tickr_reader: Any = None
         self.s4_connected: bool = False
         self.tickr_connected: bool = False
         self.start_time: float = time.monotonic()
@@ -103,6 +105,7 @@ def create_app(
     # Include routers
     app.include_router(workouts_router, prefix="/api")
     app.include_router(strava_router, prefix="/api")
+    app.include_router(settings_router, prefix="/api")
 
     # Static file serving for the dashboard SPA
     _dist = Path(__file__).parent.parent.parent / "dashboard" / "dist"
@@ -113,11 +116,13 @@ def create_app(
     @app.get("/api/status")
     async def get_status():
         sm = app_state.state_machine
-        reader = app_state.s4_reader
+        s4_reader = app_state.s4_reader
+        tickr_reader = app_state.tickr_reader
         return {
             "s4_connected": app_state.s4_connected,
-            "s4_paused": reader.paused if reader else False,
+            "s4_paused": s4_reader.paused if s4_reader else False,
             "tickr_connected": app_state.tickr_connected,
+            "tickr_paused": tickr_reader.paused if tickr_reader else False,
             "workout_state": sm.state.value if sm else WorkoutState.IDLE.value,
             "uptime_seconds": int(time.monotonic() - app_state.start_time),
             "last_metrics_ts": (
@@ -145,6 +150,86 @@ def create_app(
         await reader.disconnect_and_pause()
         logger.info("S4 polling paused via API")
         return {"s4_paused": True}
+
+    @app.post("/api/s4/reset")
+    async def s4_reset():
+        """Send USB_RESET command to S4 to clear workout counters."""
+        reader = app_state.s4_reader
+        if reader is None:
+            return JSONResponse(status_code=503, content={"detail": "S4 not available"})
+        await reader.send_reset()
+        logger.info("S4 reset via API")
+        return {"status": "reset_sent"}
+
+    # HR control
+    @app.post("/api/hr/disconnect")
+    async def hr_disconnect():
+        """Pause TICKR reading (disconnect, no auto-reconnect)."""
+        reader = app_state.tickr_reader
+        if reader is None:
+            return JSONResponse(status_code=503, content={"detail": "TICKR not available"})
+        await reader.pause_reading()
+        return {"tickr_paused": True}
+
+    @app.post("/api/hr/connect")
+    async def hr_connect():
+        """Resume TICKR reading (allow reconnection)."""
+        reader = app_state.tickr_reader
+        if reader is None:
+            return JSONResponse(status_code=503, content={"detail": "TICKR not available"})
+        await reader.resume_reading()
+        return {"tickr_paused": False}
+
+    # System control
+    @app.post("/api/system/restart")
+    async def restart_system():
+        """Restart Raspberry Pi (requires passwordless sudo for reboot)."""
+        import subprocess
+
+        logger.warning("System restart requested via API")
+        asyncio.create_task(_delayed_reboot())
+        return {"status": "reboot_scheduled", "delay_seconds": 3}
+
+    async def _delayed_reboot():
+        """Delay before reboot to allow response to be sent."""
+        await asyncio.sleep(3)
+        try:
+            subprocess.run(["sudo", "reboot"], check=True)
+        except Exception as e:
+            logger.error("Restart failed: %s", e)
+
+    @app.post("/api/system/restart-service")
+    async def restart_service():
+        """Restart BuoyCast systemd service (requires passwordless sudo)."""
+        import subprocess
+
+        logger.warning("Service restart requested via API")
+        asyncio.create_task(_delayed_service_restart())
+        return {"status": "service_restart_scheduled", "delay_seconds": 2}
+
+    async def _delayed_service_restart():
+        """Delay before service restart to allow response to be sent."""
+        await asyncio.sleep(2)
+        try:
+            subprocess.run(["sudo", "systemctl", "restart", "waterrower"], check=True)
+        except Exception as e:
+            logger.error("Service restart failed: %s", e)
+
+    @app.get("/api/logs")
+    async def get_logs(lines: int = 100):
+        """Get recent logs from journald."""
+        import subprocess
+
+        try:
+            result = subprocess.run(
+                ["journalctl", "-u", "buoycast", "-n", str(lines), "--no-pager"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            return {"logs": result.stdout}
+        except Exception as e:
+            return JSONResponse(status_code=500, content={"detail": f"Log error: {e}"})
 
     # WebSocket endpoint
     @app.websocket("/ws/live")

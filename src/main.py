@@ -122,6 +122,7 @@ async def run(settings: Settings) -> None:
             tickr_reader = TickrReader(ble_factory, event_bus, settings.heart_rate)
             await tickr_reader.start()
             components.append(tickr_reader)
+            app_state.tickr_reader = tickr_reader
         except ImportError:
             logger.warning("bleak not available — TICKR reader disabled")
         except Exception as exc:
