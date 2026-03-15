@@ -25,6 +25,27 @@ from src.workout.state import InvalidTransitionError, WorkoutStateMachine
 
 logger = logging.getLogger(__name__)
 
+GITHUB_REPO = "kjaebker/BuoyCast"
+
+
+async def fetch_latest_release() -> tuple[dict | None, str | None]:
+    """Fetch the latest release from GitHub. Returns (release_dict, error_string)."""
+    import httpx
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest",
+                headers={"Accept": "application/vnd.github+json"},
+            )
+            if resp.status_code == 404:
+                return None, "No releases found"
+            resp.raise_for_status()
+            return resp.json(), None
+    except Exception as e:
+        logger.warning("Update check failed: %s", e)
+        return None, f"Failed to check: {e}"
+
 
 class AppState:
     """Shared application state — injected into routes via app.state."""
@@ -214,6 +235,87 @@ def create_app(
             subprocess.run(["sudo", "systemctl", "restart", "waterrower"], check=True)
         except Exception as e:
             logger.error("Service restart failed: %s", e)
+
+    # ── Software update endpoints ──────────────────────────────────────
+
+    @app.get("/api/system/update/check")
+    async def check_for_update():
+        """Check GitHub Releases for a newer version.
+
+        Compares the installed VERSION file against the latest GitHub Release tag.
+        Returns current version, latest version, and whether an update is available.
+        """
+        # Read installed version
+        version_file = Path("/opt/buoycast/VERSION")
+        if not version_file.exists():
+            # Fallback: try local VERSION in project root
+            version_file = Path(__file__).parent.parent.parent / "VERSION"
+        current = version_file.read_text().strip() if version_file.exists() else "unknown"
+
+        release, error = await fetch_latest_release()
+        if error:
+            return {
+                "current_version": current,
+                "latest_version": None,
+                "update_available": False,
+                "release_notes": None,
+                "error": error,
+            }
+
+        latest = release.get("tag_name", "unknown")
+        update_available = latest != current and current != "unknown"
+        return {
+            "current_version": current,
+            "latest_version": latest,
+            "update_available": update_available,
+            "release_notes": release.get("body", ""),
+            "published_at": release.get("published_at"),
+            "error": None,
+        }
+
+    @app.post("/api/system/update")
+    async def trigger_update():
+        """Download the latest release bundle and apply it.
+
+        Runs update.sh --release in the background. The service will restart
+        automatically after the update completes, so the dashboard will
+        briefly disconnect and reconnect.
+        """
+        import subprocess
+
+        # Check that update.sh exists
+        update_script = Path("/opt/buoycast/update.sh")
+        if not update_script.exists():
+            update_script = Path(__file__).parent.parent.parent / "update.sh"
+        if not update_script.exists():
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "update.sh not found"},
+            )
+
+        logger.warning("Software update triggered via API")
+
+        # Run update in background — it will restart the service at the end
+        asyncio.create_task(_run_update(str(update_script)))
+        return {
+            "status": "update_started",
+            "message": "Downloading and installing update. The service will restart automatically.",
+        }
+
+    async def _run_update(script_path: str):
+        """Run update.sh --release in a subprocess after a short delay."""
+        import subprocess
+
+        await asyncio.sleep(1)  # Let the response be sent first
+        try:
+            subprocess.Popen(
+                ["sudo", "bash", script_path, "--release"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,  # Detach from our process group
+            )
+        except Exception as e:
+            logger.error("Update failed to start: %s", e)
 
     @app.get("/api/logs")
     async def get_logs(lines: int = 100):
