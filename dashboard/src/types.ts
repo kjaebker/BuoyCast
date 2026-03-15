@@ -93,7 +93,9 @@ export type MetricsMessage = WSMessage & {
 
 export type SystemStatus = {
   s4_connected: boolean;
+  s4_paused: boolean;
   tickr_connected: boolean;
+  tickr_paused: boolean;
   workout_state: WorkoutState;
   uptime_seconds: number;
   last_metrics_ts: string | null;
@@ -105,4 +107,9 @@ export type StravaStatus = {
   athlete_name?: string;
   token_expires_at?: number;
   reason?: string;
+};
+
+export type AppSettings = {
+  include_hr_in_strava_upload: boolean;
+  updated_at: string;
 };
