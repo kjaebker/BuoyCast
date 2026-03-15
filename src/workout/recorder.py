@@ -52,6 +52,7 @@ class StrokeRecorder:
         self._workout_id: str | None = None
         self._buffer: deque[StrokeRecord] = deque()
         self._all_strokes: list[StrokeRecord] = []
+        self._last_calories: int | None = None
 
     @property
     def workout_id(self) -> str | None:
@@ -131,6 +132,10 @@ class StrokeRecorder:
             self._buffer.append(record)
             self._all_strokes.append(record)
 
+            # Track latest calories value for summary computation
+            if metrics.calories is not None:
+                self._last_calories = metrics.calories
+
     async def _flush_loop(self) -> None:
         """Periodically flush buffer to SQLite."""
         while self._running:
@@ -178,6 +183,7 @@ class StrokeRecorder:
         self._workout_id = uuid.uuid4().hex[:12]
         self._buffer.clear()
         self._all_strokes.clear()
+        self._last_calories = None
 
         # Insert placeholder so strokes can reference this workout_id
         started_at = self._sm.started_at or datetime.now(tz=timezone.utc)
@@ -256,6 +262,7 @@ class StrokeRecorder:
             "avg_power_watts": avg_power,
             "avg_heart_rate": avg_hr,
             "max_heart_rate": max_hr,
+            "calories": self._last_calories or 0,
         }
 
     def handle_workout_started(self) -> str:
