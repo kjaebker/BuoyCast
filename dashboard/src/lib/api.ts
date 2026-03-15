@@ -7,6 +7,7 @@ import type {
   StravaStatus,
   WorkoutRecord,
   StrokeRecord,
+  AppSettings,
 } from "@/types";
 
 const BASE = "/api";
@@ -60,9 +61,11 @@ export const resetWorkout = () =>
 
 // --- Upload ---
 
-export const uploadWorkout = (id: string) =>
+export const uploadWorkout = (id: string, includeHr?: boolean) =>
   fetchJSON<{ status: string; workout_id: string }>(`/workouts/${id}/upload`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: includeHr !== undefined ? JSON.stringify({ include_hr: includeHr }) : undefined,
   });
 
 export const skipWorkout = (id: string) =>
@@ -90,3 +93,7 @@ export const getStravaStatus = () => fetchJSON<StravaStatus>("/strava/status");
 
 export const disconnectStrava = () =>
   fetchJSON<{ connected: boolean }>("/strava/auth", { method: "DELETE" });
+
+// --- Settings ---
+
+export const getSettings = () => fetchJSON<AppSettings>("/settings");
