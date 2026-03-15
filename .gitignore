@@ -189,3 +189,6 @@ dashboard/node_modules/
 config.toml
 *.fit
 data/
+
+# Nix / direnv
+.direnv/
