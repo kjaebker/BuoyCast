@@ -113,3 +113,12 @@ export type AppSettings = {
   include_hr_in_strava_upload: boolean;
   updated_at: string;
 };
+
+export type UpdateInfo = {
+  current_version: string;
+  latest_version: string | null;
+  update_available: boolean;
+  release_notes: string | null;
+  published_at?: string;
+  error: string | null;
+};
