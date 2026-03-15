@@ -26,20 +26,39 @@ from src.workout.state import InvalidTransitionError, WorkoutStateMachine
 logger = logging.getLogger(__name__)
 
 GITHUB_REPO = "kjaebker/BuoyCast"
+GITHUB_TOKEN_PATH = Path("/opt/buoycast/.github-token")
+
+
+def _get_github_token() -> str | None:
+    """Read GitHub token from file or environment. Required for private repos."""
+    import os
+
+    token = os.environ.get("GITHUB_TOKEN")
+    if token:
+        return token
+    if GITHUB_TOKEN_PATH.exists():
+        return GITHUB_TOKEN_PATH.read_text().strip()
+    return None
 
 
 async def fetch_latest_release() -> tuple[dict | None, str | None]:
     """Fetch the latest release from GitHub. Returns (release_dict, error_string)."""
     import httpx
 
+    headers: dict[str, str] = {"Accept": "application/vnd.github+json"}
+    token = _get_github_token()
+    if token:
+        headers["Authorization"] = f"token {token}"
+
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(
                 f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest",
-                headers={"Accept": "application/vnd.github+json"},
+                headers=headers,
             )
             if resp.status_code == 404:
-                return None, "No releases found"
+                hint = " (is GITHUB_TOKEN set? Private repos need auth)" if not token else ""
+                return None, f"No releases found{hint}"
             resp.raise_for_status()
             return resp.json(), None
     except Exception as e:

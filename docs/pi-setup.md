@@ -105,10 +105,26 @@ ssh -T git@github.com
 Download the latest release bundle from GitHub. This is a self-contained tarball
 with pre-built dashboard and all Python wheels for aarch64 — no pip downloads needed.
 
+**Private repo setup:** Create a GitHub personal access token (classic) with `repo`
+scope, then save it on the Pi:
+
 ```bash
+echo "ghp_YOUR_TOKEN_HERE" | sudo tee /opt/buoycast/.github-token
+sudo chmod 600 /opt/buoycast/.github-token
+```
+
+This token is used by `update.sh` and the Settings screen update checker.
+
+```bash
+# Set token for this session (or use the file above)
+export GITHUB_TOKEN="ghp_YOUR_TOKEN_HERE"
+
 # Download the latest release bundle
-curl -fSL "$(curl -s https://api.github.com/repos/kjaebker/BuoyCast/releases/latest \
-  | python3 -c "import sys,json; [print(a['browser_download_url']) for a in json.load(sys.stdin)['assets'] if a['name'].endswith('.tar.gz')]")" \
+curl -fSL -H "Authorization: token $GITHUB_TOKEN" \
+  -H "Accept: application/octet-stream" \
+  "$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+    https://api.github.com/repos/kjaebker/BuoyCast/releases/latest \
+    | python3 -c "import sys,json; [print(a['url']) for a in json.load(sys.stdin)['assets'] if a['name'].endswith('.tar.gz')]")" \
   -o /tmp/buoycast-bundle.tar.gz
 
 # Run the install script with the bundle

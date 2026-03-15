@@ -16,6 +16,13 @@ SERVICE_USER="pi"
 # GitHub repo for release downloads (owner/repo)
 GITHUB_REPO="kjaebker/BuoyCast"
 
+# GitHub token for private repo access.
+# Set via: environment variable, or a file at /opt/buoycast/.github-token
+GITHUB_TOKEN="${GITHUB_TOKEN:-}"
+if [[ -z "$GITHUB_TOKEN" && -f "$INSTALL_DIR/.github-token" ]]; then
+    GITHUB_TOKEN=$(cat "$INSTALL_DIR/.github-token")
+fi
+
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
@@ -24,6 +31,15 @@ NC='\033[0m'
 info() { echo -e "${GREEN}[INFO]${NC}  $*"; }
 warn() { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
+
+# Curl wrapper that adds GitHub auth header when a token is available
+gh_curl() {
+    if [[ -n "$GITHUB_TOKEN" ]]; then
+        curl -H "Authorization: token $GITHUB_TOKEN" "$@"
+    else
+        curl "$@"
+    fi
+}
 
 # ── Parse arguments ──────────────────────────────────────────────────
 MODE="auto"
@@ -44,18 +60,27 @@ done
 
 # ── Auto-detect mode ────────────────────────────────────────────────
 if [[ "$MODE" == "auto" ]]; then
-    if command -v curl &>/dev/null; then
-        # Try to reach the GitHub API — if reachable, use release mode
-        if curl -sf --max-time 5 "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" > /dev/null 2>&1; then
-            MODE="release"
-            info "Auto-detected: using GitHub Release bundle"
-        else
-            MODE="git"
-            info "Auto-detected: GitHub Releases unavailable, falling back to git"
-        fi
-    else
+    if ! command -v curl &>/dev/null; then
         MODE="git"
         info "Auto-detected: curl not found, falling back to git"
+    else
+        # Check if a release bundle actually exists (curl -w to get HTTP status)
+        HTTP_CODE=$(gh_curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
+            "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" 2>/dev/null || echo "000")
+
+        if [[ "$HTTP_CODE" == "200" ]]; then
+            MODE="release"
+            info "Auto-detected: using GitHub Release bundle"
+        elif [[ "$HTTP_CODE" == "404" ]]; then
+            MODE="git"
+            info "Auto-detected: no GitHub Releases found yet, falling back to git"
+        elif [[ "$HTTP_CODE" == "000" ]]; then
+            MODE="git"
+            info "Auto-detected: GitHub unreachable (network error), falling back to git"
+        else
+            MODE="git"
+            info "Auto-detected: GitHub API returned HTTP $HTTP_CODE, falling back to git"
+        fi
     fi
 fi
 
@@ -108,27 +133,39 @@ if [[ "$MODE" == "release" ]]; then
     info "Fetching latest release from GitHub..."
 
     # Get the download URL for the bundle tarball
-    RELEASE_JSON=$(curl -sf "https://api.github.com/repos/${GITHUB_REPO}/releases/latest") \
-        || error "Failed to fetch release info from GitHub"
+    RELEASE_JSON=$(gh_curl -sf "https://api.github.com/repos/${GITHUB_REPO}/releases/latest") \
+        || error "Failed to fetch release info from GitHub. Is GITHUB_TOKEN set? (private repo requires auth)"
 
-    DOWNLOAD_URL=$(echo "$RELEASE_JSON" | python3 -c "
+    # For private repos, browser_download_url requires auth.
+    # Use the API asset URL with Accept: application/octet-stream instead.
+    ASSET_INFO=$(echo "$RELEASE_JSON" | python3 -c "
 import sys, json
 assets = json.load(sys.stdin).get('assets', [])
 for a in assets:
     if a['name'].startswith('buoycast-') and a['name'].endswith('.tar.gz'):
-        print(a['browser_download_url'])
+        print(a['url'])        # API URL (works with token auth)
         break
 " 2>/dev/null) || true
 
-    [[ -n "$DOWNLOAD_URL" ]] || error "No buoycast bundle found in latest release"
+    [[ -n "$ASSET_INFO" ]] || error "No buoycast bundle found in latest release"
 
     TAG_NAME=$(echo "$RELEASE_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'])" 2>/dev/null)
+
+    # Skip download if already on this version
+    if [[ -f "$INSTALL_DIR/VERSION" ]]; then
+        CURRENT_VERSION=$(cat "$INSTALL_DIR/VERSION")
+        if [[ "$CURRENT_VERSION" == "$TAG_NAME" ]]; then
+            info "Already running $TAG_NAME — nothing to update"
+            exit 0
+        fi
+    fi
+
     info "Downloading $TAG_NAME bundle..."
 
-    # Download to temp directory
+    # Download to temp directory (use API URL + Accept header for private repo support)
     TMP_DIR=$(mktemp -d)
     trap "rm -rf $TMP_DIR" EXIT
-    curl -fSL "$DOWNLOAD_URL" -o "$TMP_DIR/bundle.tar.gz" \
+    gh_curl -fSL -H "Accept: application/octet-stream" "$ASSET_INFO" -o "$TMP_DIR/bundle.tar.gz" \
         || error "Failed to download release bundle"
 
     # Extract and install
