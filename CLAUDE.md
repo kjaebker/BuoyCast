@@ -30,36 +30,47 @@ All work is tracked in `TASKS.md`. Follow this protocol every time.
 
 ## Workflow
 - Commit messages follow conventional commits: `feat:`, `fix:`, `chore:`, `test:`, etc.
-- Run the full test suite before committing: `cd "C:/Users/minipc/src/GitHub/BuoyCast" && .venv/Scripts/python.exe -m pytest tests/ -q`
+- Run the full test suite before committing: `pytest tests/ -q`
 - Follow the phases in `docs/implementation-plan.md` — do not skip ahead
 
 ---
 
 ## Build/Run Commands
 
-### Python (Windows — MINGW64/Git Bash)
-The `.venv` may not exist after a fresh clone — create it first:
+### Environment Setup (NixOS with Flake)
+This project uses a Nix flake for reproducible development. With `direnv` installed:
 ```bash
-/c/Python314/python -m venv .venv
-.venv/Scripts/python.exe -m pip install -e ".[dev]"
+cd /path/to/BuoyCast
+direnv allow  # automatically enters dev shell
 ```
-Then run tests (always from `C:/Users/minipc/src/GitHub/BuoyCast`):
-```bash
-cd "C:/Users/minipc/src/GitHub/BuoyCast" && .venv/Scripts/python.exe -m pytest tests/ -q
-```
-Verbose: `.venv/Scripts/python.exe -m pytest tests/ -v`
 
-### Dashboard (always run from the `dashboard/` directory)
-Node modules may need installing after clone:
+Or manually:
 ```bash
-export PATH="/c/Program Files/nodejs:$PATH" && npm install
+nix develop
 ```
-Type-check: `node_modules/.bin/tsc -b`
-Build: `node_modules/.bin/vite build`  (or `npm run build` once tsc is on PATH)
 
-### Important
-- `.venv` is gitignored — recreate it with the commands above if missing
-- `npm run build` fails because `tsc` isn't on PATH in MINGW — use `node_modules/.bin/tsc -b && node_modules/.bin/vite build` instead
+The shell hook automatically:
+- Creates `.venv` if missing
+- Installs Python packages (including pip-only deps like `garmin-fit-sdk`)
+- Installs dashboard npm dependencies
+
+### Python
+Run tests:
+```bash
+pytest tests/ -q
+```
+Verbose: `pytest tests/ -v`
+
+### Dashboard (from `dashboard/` directory)
+Dev server: `npm run dev`
+Type-check: `npm run build` (runs tsc then vite)
+Build only: `npx vite build`
+
+### What's in the flake
+- Python 3.12 + all dependencies from pyproject.toml
+- Node.js 22 + npm
+- SQLite
+- ruff, pytest, pytest-asyncio, pytest-mock
 
 ---
 
