@@ -130,6 +130,7 @@ class TickrReader:
         self._settings = settings or HeartRateSettings()
         self._running = False
         self._connected = False
+        self._paused = False
         self._task: asyncio.Task[None] | None = None
         self._consecutive_failures = 0
         self._backoff_base_s = backoff_base_s
@@ -143,6 +144,21 @@ class TickrReader:
     @property
     def connected(self) -> bool:
         return self._connected
+
+    @property
+    def paused(self) -> bool:
+        return self._paused
+
+    async def pause_reading(self) -> None:
+        """Stop reading (disconnect, no auto-reconnect)."""
+        self._paused = True
+        await self._disconnect()
+        logger.info("TICKR reading paused")
+
+    async def resume_reading(self) -> None:
+        """Resume reading (allow reconnection)."""
+        self._paused = False
+        logger.info("TICKR reading resumed")
 
     async def start(self) -> None:
         """Start the reader loop as a background task."""
@@ -172,6 +188,11 @@ class TickrReader:
         backoff = self._backoff_base_s
 
         while self._running:
+            # Skip connection attempts if paused
+            if self._paused:
+                await asyncio.sleep(self._poll_interval_s)
+                continue
+
             try:
                 # Recreate the BLE client each attempt — on Linux/BlueZ a failed
                 # connection leaves the client in a broken state that can't be reused.
@@ -185,7 +206,7 @@ class TickrReader:
                 self._consecutive_failures = 0
 
                 # Stay connected until disconnect or stop
-                while self._running and self._ble.is_connected:
+                while self._running and not self._paused and self._ble.is_connected:
                     await asyncio.sleep(self._poll_interval_s)
 
                 # If we get here, BLE disconnected
