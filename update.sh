@@ -44,18 +44,27 @@ done
 
 # ── Auto-detect mode ────────────────────────────────────────────────
 if [[ "$MODE" == "auto" ]]; then
-    if command -v curl &>/dev/null; then
-        # Try to reach the GitHub API — if reachable, use release mode
-        if curl -sf --max-time 5 "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" > /dev/null 2>&1; then
-            MODE="release"
-            info "Auto-detected: using GitHub Release bundle"
-        else
-            MODE="git"
-            info "Auto-detected: GitHub Releases unavailable, falling back to git"
-        fi
-    else
+    if ! command -v curl &>/dev/null; then
         MODE="git"
         info "Auto-detected: curl not found, falling back to git"
+    else
+        # Check if a release bundle actually exists (curl -w to get HTTP status)
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
+            "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" 2>/dev/null || echo "000")
+
+        if [[ "$HTTP_CODE" == "200" ]]; then
+            MODE="release"
+            info "Auto-detected: using GitHub Release bundle"
+        elif [[ "$HTTP_CODE" == "404" ]]; then
+            MODE="git"
+            info "Auto-detected: no GitHub Releases found yet, falling back to git"
+        elif [[ "$HTTP_CODE" == "000" ]]; then
+            MODE="git"
+            info "Auto-detected: GitHub unreachable (network error), falling back to git"
+        else
+            MODE="git"
+            info "Auto-detected: GitHub API returned HTTP $HTTP_CODE, falling back to git"
+        fi
     fi
 fi
 
@@ -123,6 +132,16 @@ for a in assets:
     [[ -n "$DOWNLOAD_URL" ]] || error "No buoycast bundle found in latest release"
 
     TAG_NAME=$(echo "$RELEASE_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'])" 2>/dev/null)
+
+    # Skip download if already on this version
+    if [[ -f "$INSTALL_DIR/VERSION" ]]; then
+        CURRENT_VERSION=$(cat "$INSTALL_DIR/VERSION")
+        if [[ "$CURRENT_VERSION" == "$TAG_NAME" ]]; then
+            info "Already running $TAG_NAME — nothing to update"
+            exit 0
+        fi
+    fi
+
     info "Downloading $TAG_NAME bundle..."
 
     # Download to temp directory
