@@ -81,6 +81,12 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
     alert("Restarting in 3 seconds...");
   };
 
+  const handleServiceRestart = async () => {
+    if (!confirm("Restart BuoyCast service? Dashboard will reconnect automatically.")) return;
+    await fetch("/api/system/restart-service", { method: "POST" });
+    alert("Restarting service in 2 seconds...");
+  };
+
   const handleHrDefaultToggle = async () => {
     const newValue = !settings?.include_hr_in_strava_upload;
     await fetch("/api/settings", {
@@ -243,6 +249,24 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
               System
             </h2>
             <div className="space-y-3">
+              <div className="rounded-2xl border border-border/80 bg-card/75 px-4 py-4 shadow-[0_12px_32px_-20px_rgba(0,0,0,0.8)] backdrop-blur-sm">
+                <div className="mb-3 flex items-center justify-between">
+                  <div>
+                    <div className="font-semibold text-foreground">Restart Service</div>
+                    <div className="text-[0.72rem] uppercase tracking-[0.18em] text-muted-foreground">
+                      BuoyCast service only
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={handleServiceRestart}
+                  className="w-full rounded-full border border-primary/50 bg-primary/10 py-2.5 text-sm font-semibold text-primary hover:bg-primary/20 transition-colors"
+                >
+                  <RefreshCw className="mr-2 inline h-3.5 w-3.5" />
+                  Restart Service
+                </button>
+              </div>
+
               <div className="rounded-2xl border border-border/80 bg-card/75 px-4 py-4 shadow-[0_12px_32px_-20px_rgba(0,0,0,0.8)] backdrop-blur-sm">
                 <div className="mb-3 flex items-center justify-between">
                   <div>
