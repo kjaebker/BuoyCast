@@ -101,7 +101,9 @@ const ACTIVE_MESSAGES = [
 export function LiveMetrics({ metrics, workoutState }: LiveMetricsProps) {
   const strokeRateHistoryRef = useRef<number[]>([]);
   const lastActiveStrokeMs = useRef<number>(0);
+  const lastHrTimestamp = useRef<number>(0);
   const [effectiveStrokeRate, setEffectiveStrokeRate] = useState<number | null>(null);
+  const [hrConnected, setHrConnected] = useState(false);
   const [msgIdx, setMsgIdx] = useState(0);
 
   useEffect(() => {
@@ -130,6 +132,24 @@ export function LiveMetrics({ metrics, workoutState }: LiveMetricsProps) {
         setEffectiveStrokeRate(0);
       }
     }, 500);
+    return () => clearInterval(id);
+  }, []);
+
+  // Track last time we received HR data
+  useEffect(() => {
+    if (metrics?.heart_rate_bpm != null) {
+      lastHrTimestamp.current = Date.now();
+      setHrConnected(true);
+    }
+  }, [metrics?.heart_rate_bpm]);
+
+  // Hide HR tile after 5s without data
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (Date.now() - lastHrTimestamp.current > 5000) {
+        setHrConnected(false);
+      }
+    }, 1000);
     return () => clearInterval(id);
   }, []);
 
@@ -222,14 +242,16 @@ export function LiveMetrics({ metrics, workoutState }: LiveMetricsProps) {
           unit="kcal"
           tone="ember"
         />
-        <MetricTile
-          icon={<Heart className="h-3.5 w-3.5 fill-current" />}
-          label="Heart Rate"
-          value={formatNum(metrics?.heart_rate_bpm ?? null)}
-          unit="bpm"
-          tone="rose"
-          pulseRate={metrics?.heart_rate_bpm}
-        />
+        {hrConnected && (
+          <MetricTile
+            icon={<Heart className="h-3.5 w-3.5 fill-current" />}
+            label="Heart Rate"
+            value={formatNum(metrics?.heart_rate_bpm ?? null)}
+            unit="bpm"
+            tone="rose"
+            pulseRate={metrics?.heart_rate_bpm}
+          />
+        )}
       </div>
 
       <div className="mt-4 hidden md:block">

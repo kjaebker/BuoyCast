@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 
-from src.models import StrokeRecord, StravaUploadStatus, WorkoutRecord
+from src.models import AppSettings, StrokeRecord, StravaUploadStatus, WorkoutRecord
 from src.storage.db import Database
 
 
@@ -162,4 +162,29 @@ def _row_to_stroke(row: dict) -> StrokeRecord:
         pace_s_per_500m=row["pace_s_per_500m"],
         heart_rate_bpm=row["heart_rate_bpm"],
         rr_intervals_ms=json.loads(rr) if rr else None,
+    )
+
+
+async def get_app_settings(db: Database) -> AppSettings:
+    """Get app settings. Returns defaults if not found."""
+    row = await db.fetch_one("SELECT * FROM app_settings WHERE id = 1")
+    if row is None:
+        return AppSettings()
+    return AppSettings(
+        include_hr_in_strava_upload=bool(row["include_hr_in_strava_upload"]),
+        updated_at=datetime.fromisoformat(row["updated_at"]),
+    )
+
+
+async def update_app_settings(db: Database, **fields) -> None:
+    """Update app settings. Creates row if missing."""
+    fields["updated_at"] = datetime.now(timezone.utc).isoformat()
+    set_clause = ", ".join(f"{k} = ?" for k in fields.keys())
+    values = tuple(fields.values())
+
+    await db.execute(
+        f"INSERT INTO app_settings (id, {', '.join(fields.keys())}) "
+        f"VALUES (1, {', '.join('?' * len(fields))}) "
+        f"ON CONFLICT(id) DO UPDATE SET {set_clause}",
+        values + values,
     )

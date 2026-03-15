@@ -90,10 +90,12 @@ export function CompletionScreen({ onDismiss }: CompletionScreenProps) {
   const [strokes, setStrokes] = useState<StrokeRecord[]>([]);
   const [uploadState, setUploadState] = useState<UploadState>("idle");
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [includeHr, setIncludeHr] = useState(true);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     api.listWorkouts(1, 0).then(setWorkouts).catch(() => {});
+    api.getSettings().then(data => setIncludeHr(data.include_hr_in_strava_upload)).catch(() => {});
   }, []);
 
   const workout = workouts[0] ?? null;
@@ -134,7 +136,7 @@ export function CompletionScreen({ onDismiss }: CompletionScreenProps) {
     setUploadState("uploading");
     setUploadError(null);
     try {
-      await api.uploadWorkout(workout.id);
+      await api.uploadWorkout(workout.id, includeHr);
       setUploadState("polling");
     } catch (e) {
       setUploadError(e instanceof Error ? e.message : "Upload request failed");
@@ -306,15 +308,33 @@ export function CompletionScreen({ onDismiss }: CompletionScreenProps) {
               </div>
             </div>
           ) : (
-            <Button
-              size="lg"
-              className="h-14 w-full text-lg shadow-[0_16px_32px_-20px_color-mix(in_oklch,var(--color-primary)_55%,black)]"
-              onClick={handleUpload}
-              disabled={uploadState === "uploading"}
-            >
-              <Upload className="mr-2 h-5 w-5" />
-              {uploadState === "uploading" ? "Uploading..." : "Upload to Strava"}
-            </Button>
+            <>
+              {hrData.length > 0 && uploadState === "idle" && (
+                <label className="flex cursor-pointer items-center gap-4 rounded-2xl border border-border/80 bg-card/75 px-4 py-4 shadow-[0_12px_32px_-20px_rgba(0,0,0,0.8)] backdrop-blur-sm hover:bg-card/90 transition-colors">
+                  <div className="flex-1">
+                    <div className="font-semibold text-foreground">Include Heart Rate Data</div>
+                    <div className="text-[0.72rem] uppercase tracking-[0.18em] text-muted-foreground">
+                      Send HR to Strava
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={includeHr}
+                    onChange={(e) => setIncludeHr(e.target.checked)}
+                    className="h-6 w-6 rounded-md border-border accent-primary"
+                  />
+                </label>
+              )}
+              <Button
+                size="lg"
+                className="h-14 w-full text-lg shadow-[0_16px_32px_-20px_color-mix(in_oklch,var(--color-primary)_55%,black)]"
+                onClick={handleUpload}
+                disabled={uploadState === "uploading"}
+              >
+                <Upload className="mr-2 h-5 w-5" />
+                {uploadState === "uploading" ? "Uploading..." : "Upload to Strava"}
+              </Button>
+            </>
           )}
 
           {uploadState === "done" ? (
