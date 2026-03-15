@@ -98,7 +98,27 @@ ssh -T git@github.com
 
 ---
 
-## 4 — Clone the repo and run the install script
+## 4 — Install BuoyCast
+
+### Option A: Release bundle (recommended)
+
+Download the latest release bundle from GitHub. This is a self-contained tarball
+with pre-built dashboard and all Python wheels for aarch64 — no pip downloads needed.
+
+```bash
+# Download the latest release bundle
+curl -fSL "$(curl -s https://api.github.com/repos/kjaebker/BuoyCast/releases/latest \
+  | python3 -c "import sys,json; [print(a['browser_download_url']) for a in json.load(sys.stdin)['assets'] if a['name'].endswith('.tar.gz')]")" \
+  -o /tmp/buoycast-bundle.tar.gz
+
+# Run the install script with the bundle
+sudo bash -c "
+  mkdir -p /tmp/bc-install && tar -xzf /tmp/buoycast-bundle.tar.gz -C /tmp/bc-install
+  bash /tmp/bc-install/install.sh --bundle /tmp/buoycast-bundle.tar.gz
+"
+```
+
+### Option B: Git clone (for development)
 
 ```bash
 # Clone BuoyCast
@@ -109,10 +129,12 @@ cd BuoyCast
 sudo bash install.sh
 ```
 
-The script will:
-- Install system packages (Python 3, Bluetooth, Avahi, Node.js 20, git)
+### What the install script does
+
+- Install system packages (Python 3, Bluetooth, Avahi)
 - Set up a Python virtualenv in `/opt/buoycast/.venv`
-- Build the React dashboard
+- Install all Python dependencies (offline from bundle, or from PyPI)
+- Install the pre-built React dashboard
 - Copy `config.toml.example` → `/opt/buoycast/config.toml`
 - Install and enable the `buoycast` systemd service
 - Add `pi` to the `bluetooth` and `dialout` groups
