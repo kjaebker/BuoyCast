@@ -205,7 +205,7 @@ def create_app(
 
         try:
             result = subprocess.run(
-                ["journalctl", "-u", "waterrower", "-n", str(lines), "--no-pager"],
+                ["journalctl", "-u", "buoycast", "-n", str(lines), "--no-pager"],
                 capture_output=True,
                 text=True,
                 timeout=5,
