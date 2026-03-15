@@ -1,27 +1,11 @@
 #!/usr/bin/env bash
 # BuoyCast install script for Raspberry Pi
-#
-# Usage:
-#   sudo bash install.sh                          — install from repo (git clone)
-#   sudo bash install.sh --bundle /path/to/bundle — install from a release bundle tarball
-#
+# Usage: sudo bash install.sh
 set -euo pipefail
 
 INSTALL_DIR="/opt/buoycast"
 SERVICE_NAME="buoycast"
 SERVICE_USER="pi"
-
-# ── Parse arguments ──────────────────────────────────────────────────
-BUNDLE_PATH=""
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --bundle)
-            BUNDLE_PATH="${2:?'--bundle requires a path to a .tar.gz file'}"
-            shift 2
-            ;;
-        *) echo "Unknown option: $1"; exit 1 ;;
-    esac
-done
 
 # Colors for output
 RED='\033[0;31m'
@@ -75,58 +59,26 @@ fi
 mkdir -p "$INSTALL_DIR/data/fit"
 chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
 
-# ── Install from bundle or git ───────────────────────────────────────
-if [[ -n "$BUNDLE_PATH" ]]; then
-    info "Installing from release bundle: $BUNDLE_PATH"
-    TMP_DIR=$(mktemp -d)
-    trap "rm -rf $TMP_DIR" EXIT
-    mkdir -p "$TMP_DIR/bundle"
-    tar -xzf "$BUNDLE_PATH" -C "$TMP_DIR/bundle"
-    BUNDLE_DIR="$TMP_DIR/bundle"
-
-    [[ -d "$BUNDLE_DIR/wheels" ]]         || { error "Bundle missing wheels/ directory"; }
-    [[ -d "$BUNDLE_DIR/dashboard-dist" ]] || { error "Bundle missing dashboard-dist/ directory"; }
-
-    # Show version
-    if [[ -f "$BUNDLE_DIR/VERSION" ]]; then
-        info "Bundle version: $(cat "$BUNDLE_DIR/VERSION")"
-        cp "$BUNDLE_DIR/VERSION" "$INSTALL_DIR/VERSION"
-    fi
-fi
-
 # ── Python virtual environment ───────────────────────────────────────
 info "Setting up Python virtual environment..."
 if [[ ! -d "$INSTALL_DIR/.venv" ]]; then
     python3 -m venv "$INSTALL_DIR/.venv"
 fi
-"$INSTALL_DIR/.venv/bin/pip" install --upgrade pip -q
 
-if [[ -n "$BUNDLE_PATH" ]]; then
-    # Offline install from pre-built aarch64 wheels
-    "$INSTALL_DIR/.venv/bin/pip" install \
-        --no-index \
-        --find-links "$BUNDLE_DIR/wheels" \
-        buoycast bleak bless dbus-python \
-        -q
-else
-    # Online install from PyPI
-    "$INSTALL_DIR/.venv/bin/pip" install -e "$INSTALL_DIR" -q
-    # Install BLE libraries: bleak (central/TICKR) + bless (peripheral/FTMS broadcaster)
-    "$INSTALL_DIR/.venv/bin/pip" install bleak bless dbus-python -q
-fi
+# Install Python dependencies
+"$INSTALL_DIR/.venv/bin/pip" install --upgrade pip -q
+"$INSTALL_DIR/.venv/bin/pip" install -e "$INSTALL_DIR" -q
+
+# Install BLE libraries: bleak (central/TICKR) + bless (peripheral/FTMS broadcaster)
+"$INSTALL_DIR/.venv/bin/pip" install bleak bless dbus-python -q
 
 info "Python packages installed"
 
 # ── Dashboard (pre-built) ────────────────────────────────────────────
 # The dashboard is built by GitHub Actions (not on the Pi) to avoid the
-# Node.js JS-heap OOM on Pi Zero 2W's 512 MB RAM.
-if [[ -n "$BUNDLE_PATH" ]]; then
-    # Copy dashboard from bundle
-    mkdir -p "$INSTALL_DIR/dashboard"
-    rm -rf "$INSTALL_DIR/dashboard/dist"
-    cp -r "$BUNDLE_DIR/dashboard-dist" "$INSTALL_DIR/dashboard/dist"
-    info "Dashboard dist installed from bundle"
-elif [[ -d "$INSTALL_DIR/dashboard/dist" ]]; then
+# Node.js JS-heap OOM on Pi Zero 2W's 512 MB RAM.  The compiled dist/ is
+# committed to the repo, so `git pull` is all that's needed to update it.
+if [[ -d "$INSTALL_DIR/dashboard/dist" ]]; then
     info "Dashboard dist present (pre-built by CI)"
 else
     warn "dashboard/dist/ missing — make sure you cloned the full repo and CI has run"
