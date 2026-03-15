@@ -198,6 +198,23 @@ def create_app(
         except Exception as e:
             logger.error("Restart failed: %s", e)
 
+    @app.post("/api/system/restart-service")
+    async def restart_service():
+        """Restart BuoyCast systemd service (requires passwordless sudo)."""
+        import subprocess
+
+        logger.warning("Service restart requested via API")
+        asyncio.create_task(_delayed_service_restart())
+        return {"status": "service_restart_scheduled", "delay_seconds": 2}
+
+    async def _delayed_service_restart():
+        """Delay before service restart to allow response to be sent."""
+        await asyncio.sleep(2)
+        try:
+            subprocess.run(["sudo", "systemctl", "restart", "waterrower"], check=True)
+        except Exception as e:
+            logger.error("Service restart failed: %s", e)
+
     @app.get("/api/logs")
     async def get_logs(lines: int = 100):
         """Get recent logs from journald."""
