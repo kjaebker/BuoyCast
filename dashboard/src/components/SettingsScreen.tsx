@@ -4,9 +4,9 @@
  */
 
 import { useState, useEffect } from "react";
-import { ArrowLeft, Wifi, WifiOff, Heart, HeartOff, UploadCloud, Upload, RefreshCw, RotateCcw } from "lucide-react";
+import { ArrowLeft, Wifi, WifiOff, Heart, HeartOff, UploadCloud, Upload, RefreshCw, RotateCcw, Download, CheckCircle2, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { SystemStatus, StravaStatus, AppSettings } from "@/types";
+import type { SystemStatus, StravaStatus, AppSettings, UpdateInfo } from "@/types";
 
 type SettingsScreenProps = {
   onBack: () => void;
@@ -55,6 +55,9 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [logs, setLogs] = useState("");
   const [logsLoading, setLogsLoading] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [updateChecking, setUpdateChecking] = useState(false);
+  const [updateInstalling, setUpdateInstalling] = useState(false);
 
   useEffect(() => {
     fetch("/api/status").then(r => r.json()).then(setStatus);
@@ -103,6 +106,35 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
     const data = await fetch("/api/logs?lines=200").then(r => r.json());
     setLogs(data.logs);
     setLogsLoading(false);
+  };
+
+  const handleCheckUpdate = async () => {
+    setUpdateChecking(true);
+    try {
+      const data = await fetch("/api/system/update/check").then(r => r.json());
+      setUpdateInfo(data);
+    } catch {
+      setUpdateInfo({
+        current_version: "unknown",
+        latest_version: null,
+        update_available: false,
+        release_notes: null,
+        error: "Failed to reach update server",
+      });
+    } finally {
+      setUpdateChecking(false);
+    }
+  };
+
+  const handleInstallUpdate = async () => {
+    if (!confirm("Install update? The service will restart and the dashboard will briefly disconnect.")) return;
+    setUpdateInstalling(true);
+    try {
+      await fetch("/api/system/update", { method: "POST" });
+    } catch {
+      alert("Failed to start update");
+      setUpdateInstalling(false);
+    }
   };
 
   const handleStravaAuth = async () => {
@@ -283,6 +315,109 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
                   <RefreshCw className="mr-2 inline h-3.5 w-3.5" />
                   Restart Pi
                 </button>
+              </div>
+            </div>
+          </section>
+
+          {/* Software Update */}
+          <section>
+            <h2 className="mb-3 text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              Software Update
+            </h2>
+            <div className="rounded-2xl border border-border/80 bg-card/75 px-4 py-4 shadow-[0_12px_32px_-20px_rgba(0,0,0,0.8)] backdrop-blur-sm">
+              <div className="space-y-4">
+                {/* Version info */}
+                <div className="flex items-center gap-4">
+                  <div className={cn(
+                    "flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl",
+                    updateInfo?.update_available
+                      ? "bg-[color-mix(in_oklch,var(--color-primary)_18%,transparent)] text-primary"
+                      : "bg-muted/60 text-muted-foreground",
+                  )}>
+                    {updateInfo?.update_available ? (
+                      <Download className="h-5 w-5" />
+                    ) : updateInfo && !updateInfo.error && !updateInfo.update_available ? (
+                      <CheckCircle2 className="h-5 w-5" />
+                    ) : updateInfo?.error ? (
+                      <AlertCircle className="h-5 w-5" />
+                    ) : (
+                      <Download className="h-5 w-5" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-foreground">
+                      {updateInfo?.update_available
+                        ? `Update available: ${updateInfo.latest_version}`
+                        : updateInfo && !updateInfo.error
+                          ? "Up to date"
+                          : updateInfo?.error
+                            ? "Check failed"
+                            : "BuoyCast"}
+                    </div>
+                    <div className="text-[0.72rem] uppercase tracking-[0.18em] text-muted-foreground">
+                      {updateInfo
+                        ? `Installed: ${updateInfo.current_version}`
+                        : "Check for available updates"}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Release notes (if update available) */}
+                {updateInfo?.update_available && updateInfo.release_notes && (
+                  <div className="rounded-xl border border-border/60 bg-black/30 p-3 max-h-32 overflow-auto">
+                    <div className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground mb-1">
+                      Release Notes
+                    </div>
+                    <p className="text-sm text-foreground/80 whitespace-pre-wrap">
+                      {updateInfo.release_notes}
+                    </p>
+                  </div>
+                )}
+
+                {/* Error message */}
+                {updateInfo?.error && (
+                  <p className="text-sm text-destructive">{updateInfo.error}</p>
+                )}
+
+                {/* Action buttons */}
+                <div className="flex gap-3">
+                  {updateInfo?.update_available && !updateInstalling ? (
+                    <button
+                      onClick={handleInstallUpdate}
+                      className="flex-1 rounded-full bg-primary py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
+                    >
+                      <Download className="mr-2 inline h-3.5 w-3.5" />
+                      Install Update
+                    </button>
+                  ) : updateInstalling ? (
+                    <div className="flex-1 rounded-full border border-primary/50 bg-primary/10 py-2.5 text-center text-sm font-semibold text-primary">
+                      <RefreshCw className="mr-2 inline h-3.5 w-3.5 animate-spin" />
+                      Updating — service will restart...
+                    </div>
+                  ) : null}
+                  {!updateInstalling && (
+                    <button
+                      onClick={handleCheckUpdate}
+                      disabled={updateChecking}
+                      className={cn(
+                        "rounded-full border border-border/80 bg-card/70 px-4 py-2.5 text-sm font-medium text-foreground hover:bg-accent transition-colors disabled:opacity-50",
+                        !updateInfo?.update_available && "flex-1",
+                      )}
+                    >
+                      {updateChecking ? (
+                        <>
+                          <RefreshCw className="mr-2 inline h-3.5 w-3.5 animate-spin" />
+                          Checking...
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="mr-2 inline h-3.5 w-3.5" />
+                          Check for Updates
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </section>
