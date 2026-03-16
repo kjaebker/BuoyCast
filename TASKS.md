@@ -38,3 +38,4 @@ Add new tasks here as they arise.
 | E8 | Frontend: Conditional HR tile rendering (5s timeout) | done | 2026-03-15 |
 | E9 | Frontend: Add HR data checkbox to CompletionScreen upload | done | 2026-03-15 |
 | E10 | Deploy: Automated Pi deployment via GitHub Actions release bundles | done | 2026-03-15 |
+| E11 | Fix: HR data corruption from RR buffer lock-in, staleness too aggressive, tile disappearing | done | 2026-03-16 |
