@@ -10,6 +10,7 @@ import { Activity, Timer, Ruler, Gauge, Zap, Flame, Heart } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatTime, formatPace, formatDistance, formatNum } from "@/lib/format";
 import { MetricSparkline } from "./MetricSparkline";
+import { RowingScene } from "./RowingScene";
 import type { RowingMetrics, WorkoutState } from "@/types";
 
 type LiveMetricsProps = {
@@ -199,6 +200,13 @@ export function LiveMetrics({ metrics, workoutState }: LiveMetricsProps) {
           {workoutState}
         </div>
       </div>
+
+      <RowingScene
+        strokeRate={effectiveStrokeRate}
+        pace={metrics?.pace_s_per_500m ?? null}
+        isActive={workoutState === "ACTIVE"}
+        isPaused={workoutState === "PAUSED"}
+      />
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
         <MetricTile
