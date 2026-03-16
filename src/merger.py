@@ -15,8 +15,10 @@ from src.models import RowingMetrics
 
 logger = logging.getLogger(__name__)
 
-# If TICKR data is older than this, treat HR as unavailable
-STALE_THRESHOLD_S = 3.0
+# If TICKR data is older than this, treat HR as unavailable.
+# 5 seconds gives ample margin for BLE notification jitter (~1Hz)
+# while still clearing stale data after a genuine disconnect.
+STALE_THRESHOLD_S = 5.0
 
 
 class DataMerger:

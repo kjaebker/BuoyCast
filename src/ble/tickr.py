@@ -13,6 +13,8 @@ from collections import deque
 from datetime import datetime, timezone
 from typing import Callable, Protocol
 
+from pydantic import ValidationError
+
 from src.config import HeartRateSettings
 from src.events import EventBus, EventType
 from src.models import RowingMetrics
@@ -139,7 +141,12 @@ class TickrReader:
         # Rolling buffer of recent RR intervals (ms). BPM is derived from their
         # average rather than from a single beat, which eliminates HRV noise and
         # prevents the TICKR's double-counting firmware bug from reaching the UI.
-        self._rr_buffer: deque[int] = deque(maxlen=6)
+        self._rr_buffer: deque[int] = deque(maxlen=10)
+        # Cross-check: track consecutive readings where RR-derived BPM diverges
+        # from the BPM field. If divergence persists, the RR buffer is corrupt.
+        self._consecutive_divergence = 0
+        # Rate-of-change limiting: prevent implausible BPM jumps.
+        self._last_emitted_bpm: int | None = None
 
     @property
     def connected(self) -> bool:
@@ -259,6 +266,8 @@ class TickrReader:
             except Exception:
                 pass
         self._rr_buffer.clear()
+        self._consecutive_divergence = 0
+        self._last_emitted_bpm = None
         if was_connected:
             await self._bus.emit(EventType.TICKR_DISCONNECTED)
             logger.info("TICKR disconnected")
@@ -301,22 +310,64 @@ class TickrReader:
             logger.debug("Skipping invalid HR data: %s", e)
             return
 
+        # Determine the "field BPM" — the BPM value reported directly by the
+        # TICKR hardware, corrected for the known doubling firmware bug.
+        field_bpm = bpm // 2 if self._settings.bpm_field_doubled else bpm
+
         # Prefer RR-derived BPM — it reflects actual beat-to-beat timing and is
         # immune to the TICKR BPM-doubling firmware bug.  Outliers are filtered
         # first so that a single spurious detection doesn't corrupt the average.
         #
-        # Fallback chain when no clean RR data is available:
-        #   1. bpm_field_doubled=True in config → BPM field / 2
-        #   2. Otherwise → BPM field as-is
+        # Cross-check: if the RR-derived BPM is HIGHER than the field BPM by
+        # more than 40% for several consecutive readings, the RR buffer is
+        # likely corrupted (locked onto spurious short intervals from poor skin
+        # contact). Reset the buffer and fall back to the field BPM.
+        #
+        # The check is one-directional: only when RR-derived > field.  When the
+        # field is higher than RR-derived, that's the TICKR BPM-doubling firmware
+        # bug — the RR data is correct and the field is wrong, so we keep using
+        # RR-derived BPM in that case.
         self._add_rr_intervals(rr_intervals)
         if self._rr_buffer:
-            bpm = round(60000 / (sum(self._rr_buffer) / len(self._rr_buffer)))
+            rr_bpm = round(60000 / (sum(self._rr_buffer) / len(self._rr_buffer)))
+            if field_bpm > 0 and rr_bpm > field_bpm * 1.40:
+                self._consecutive_divergence += 1
+                if self._consecutive_divergence >= 3:
+                    logger.warning(
+                        "RR buffer appears corrupted (RR-derived %d >> field %d), resetting",
+                        rr_bpm, field_bpm, self._consecutive_divergence,
+                    )
+                    self._rr_buffer.clear()
+                    self._consecutive_divergence = 0
+                bpm = field_bpm
+            else:
+                self._consecutive_divergence = 0
+                bpm = rr_bpm
         elif self._settings.bpm_field_doubled:
             bpm = bpm // 2
 
-        metrics = RowingMetrics(
-            timestamp=datetime.now(tz=timezone.utc),
-            heart_rate_bpm=bpm,
-            rr_intervals_ms=rr_intervals if rr_intervals else None,
-        )
+        # Rate-of-change limiting: physiologically, HR cannot jump more than
+        # ~15 BPM between consecutive 1-second notifications.  This catches
+        # sudden firmware glitches (e.g. BPM doubling mid-workout) that both
+        # the field and RR data might report simultaneously.
+        if self._last_emitted_bpm is not None:
+            max_delta = 15
+            delta = bpm - self._last_emitted_bpm
+            if abs(delta) > max_delta:
+                bpm = self._last_emitted_bpm + (max_delta if delta > 0 else -max_delta)
+                logger.debug(
+                    "Rate-limited HR change: %d -> %d (clamped delta %d)",
+                    self._last_emitted_bpm, bpm, delta,
+                )
+        self._last_emitted_bpm = bpm
+
+        try:
+            metrics = RowingMetrics(
+                timestamp=datetime.now(tz=timezone.utc),
+                heart_rate_bpm=bpm,
+                rr_intervals_ms=rr_intervals if rr_intervals else None,
+            )
+        except ValidationError as e:
+            logger.debug("Skipping HR with invalid derived BPM %d: %s", bpm, e)
+            return
         await self._bus.emit(EventType.METRICS_UPDATE, data=metrics)
