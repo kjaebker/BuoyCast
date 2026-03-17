@@ -24,7 +24,7 @@ WaterRower S4  ──USB──►  Pi Zero 2W  ──BLE FTMS──►  Peloton
 | S4 serial reader | USB CDC at 19200 baud, ~1 Hz poll, auto-reconnect |
 | FTMS broadcast | BLE peripheral advertising Rower Data (0x2AD1) to Peloton / WaterRower app |
 | Heart rate | Wahoo TICKR via BLE HRS; BPM + RR intervals merged into the metrics stream |
-| Dashboard | React PWA at `http://waterrower.local:8080`; optimised for iPhone + iPad |
+| Dashboard | React PWA at `http://buoycast.local:8080`; optimised for iPhone + iPad |
 | WebSocket | Live metrics pushed over `/ws/live`; no polling |
 | Workout recording | Stroke-level data flushed to SQLite every 10 s; survives unexpected shutdown |
 | FIT export | `Sport.ROWING / SubSport.INDOOR_ROWING` with full HR time series |
@@ -59,7 +59,7 @@ Full step-by-step instructions are in [`docs/pi-setup.md`](docs/pi-setup.md).
 ssh pi@waterrower.local
 
 # 3. Clone and install
-git clone https://github.com/your-org/BuoyCast.git
+git clone git@github.com:kjaebker/BuoyCast.git
 cd BuoyCast
 sudo bash install.sh
 
@@ -67,10 +67,10 @@ sudo bash install.sh
 nano /opt/buoycast/config.toml
 
 # 5. Strava OAuth — one-time from a browser
-# http://waterrower.local:8080/api/strava/auth
+# http://buoycast.local:8080/api/strava/auth
 
 # 6. Verify
-curl http://waterrower.local:8080/api/status
+curl http://buoycast.local:8080/api/status
 ```
 
 ---
@@ -111,14 +111,19 @@ IDLE
 [server]
 host = "0.0.0.0"
 port = 8080
-mdns_name = "waterrower"       # → http://waterrower.local:8080
+mdns_name = "buoycast"         # → http://buoycast.local:8080
 
 [s4]
 port = "/dev/ttyACM0"
 baud_rate = 19200
+poll_interval_hz = 1.0
+reconnect_delay_s = 5
 
 [heart_rate]
+enabled = true
 device_mac = "A4:34:F1:XX:XX:XX"   # your TICKR's MAC address
+device_name = ""               # e.g. "TICKR XXXX"
+required = false               # workout proceeds without HR if unavailable
 
 [strava]
 client_id     = ""
@@ -127,6 +132,16 @@ client_secret = ""
 [workout]
 auto_pause_idle_s = 30
 auto_end_idle_s   = 300
+min_workout_distance_m = 100   # discard workouts under 100m
+
+[storage]
+db_path = "data/buoycast.db"
+fit_dir = "data/fit"
+
+[logging]
+level = "INFO"                 # DEBUG | INFO | WARNING | ERROR
+log_dir = "logs"
+json_logs = false
 ```
 
 ---
@@ -144,12 +159,27 @@ auto_end_idle_s   = 300
 | `POST` | `/api/workout/pause` | Pause |
 | `POST` | `/api/workout/resume` | Resume |
 | `POST` | `/api/workout/end` | End |
+| `POST` | `/api/workout/reset` | Reset from SUMMARY back to IDLE |
 | `POST` | `/api/workouts/{id}/upload` | Queue Strava upload (202 Accepted) |
 | `POST` | `/api/workouts/{id}/skip` | Mark SKIPPED |
-| `GET` | `/api/strava/auth` | Begin OAuth flow |
-| `GET` | `/api/strava/callback` | OAuth callback |
+| `GET` | `/api/recovery` | Return any incomplete (unended) workout for recovery prompt |
+| `POST` | `/api/recovery/{id}/discard` | Discard an incomplete workout |
+| `GET` | `/api/settings` | Get app settings |
+| `PUT` | `/api/settings` | Update app settings (partial) |
+| `GET` | `/api/strava/auth` | Begin OAuth flow (returns redirect URL) |
+| `GET` | `/api/strava/callback` | OAuth callback — exchange code for tokens |
 | `GET` | `/api/strava/status` | Connected athlete info |
 | `DELETE` | `/api/strava/auth` | Revoke token |
+| `POST` | `/api/s4/connect` | Resume S4 polling |
+| `POST` | `/api/s4/disconnect` | Pause S4 polling |
+| `POST` | `/api/s4/reset` | Send USB_RESET to S4 (clears workout counters) |
+| `POST` | `/api/hr/connect` | Resume TICKR reading |
+| `POST` | `/api/hr/disconnect` | Pause TICKR reading |
+| `POST` | `/api/system/restart` | Reboot the Raspberry Pi |
+| `POST` | `/api/system/restart-service` | Restart the buoycast systemd service |
+| `GET` | `/api/system/update/check` | Check if a new version is available on origin/main |
+| `POST` | `/api/system/update` | Pull latest code and restart the service |
+| `GET` | `/api/logs` | Recent journald log lines (default: last 100) |
 | `WS` | `/ws/live` | Live metrics + state events |
 
 ---
@@ -163,6 +193,7 @@ src/
 ├── models.py         # RowingMetrics, WorkoutRecord, StrokeRecord (Pydantic v2)
 ├── events.py         # EventBus + EventType enum
 ├── merger.py         # Merges S4 + TICKR → MERGED_METRICS
+├── logging_config.py # structlog + rotating file handler setup
 ├── s4/
 │   ├── protocol.py   # Memory addresses, command constants, byte parsers
 │   └── reader.py     # Async serial reader, ~1 Hz poll loop
@@ -172,10 +203,11 @@ src/
 ├── workout/
 │   ├── state.py      # WorkoutStateMachine
 │   ├── recorder.py   # Stroke buffer, 10 s SQLite flush
+│   ├── detection.py  # Auto-pause / auto-end idle detection
 │   └── fit.py        # FIT file generation
 ├── web/
 │   ├── server.py     # FastAPI app, WebSocket, lifespan
-│   └── routes/       # workouts.py, strava.py
+│   └── routes/       # workouts.py, strava.py, settings.py
 ├── strava/
 │   ├── auth.py       # OAuth2, token storage + refresh
 │   └── upload.py     # FIT upload, status polling
@@ -194,21 +226,40 @@ tests/
 
 ## Development
 
+The project includes a Nix flake for a fully reproducible dev shell. With [direnv](https://direnv.net/) installed:
+
 ```bash
-# Python (requires Python 3.11+)
+direnv allow        # automatically enters the dev shell and sets up .venv
+```
+
+Or manually:
+
+```bash
+nix develop
+```
+
+Without Nix (requires Python 3.11+):
+
+```bash
 python -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
+source .venv/bin/activate
 pip install -e ".[dev]"
+```
 
-# Run tests
-pytest tests/ -v
+Run tests:
 
-# Dashboard
+```bash
+pytest tests/ -q
+```
+
+Dashboard:
+
+```bash
 cd dashboard
 npm install
-npm run dev                        # dev server on :5173
-npm run build                      # production build → dashboard/dist/
-npx tsc --noEmit                   # type-check only
+npm run dev        # dev server on :5173
+npm run build      # production build → dashboard/dist/
+npx tsc --noEmit   # type-check only
 ```
 
 Hardware is never required for development — `MockSerial` and `MockBLEClient` fixtures in `tests/conftest.py` simulate the S4 and TICKR.
