@@ -99,7 +99,7 @@ export function RowingScene({
       await app.init({
         width: W,
         height: H,
-        backgroundAlpha: 0,
+        background: 0xd4895a, // warm sunset — matches sky dithered transparency
         antialias: false,
         resolution: window.devicePixelRatio ?? 1,
         autoDensity: true,

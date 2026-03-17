@@ -7,6 +7,8 @@
   overflow: hidden;
   border-radius: 1rem;
   margin-bottom: 0.75rem;
+  /* Warm sunset base — shows through sky dithered transparency */
+  background: #d4895a;
 }
 
 @media (min-width: 768px) {
