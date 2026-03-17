@@ -1,13 +1,12 @@
 """
 Extract individual layer PNGs from rower_sheet_long.png.
 
-The source file uses a gray checkerboard fill (RGB, no alpha) to mark
-background/separator regions. Content bands are detected by measuring the
-fraction of "neutral gray" pixels per row.
-
-The water layer shares its horizontal band with small rower-frame previews on
-the right, so we additionally detect a vertical separator and crop to the
-water-only portion.
+Approach: for each layer, find tight per-edge boundaries by scanning rows and
+columns for any "colored" pixel (saturation > 8, i.e. not pure gray/black).
+This correctly handles:
+  - Narrow mountain peaks / tree tips that have very few pixels per row
+  - Gray checkerboard borders surrounding each layer in the reference sheet
+  - Transparent sky areas above mountains and treeline
 
 Outputs (dashboard/public/assets/rowing/):
   sky.png, mountains.png, treeline.png, water.png, rower-spritesheet.png
@@ -25,107 +24,160 @@ OUT_DIR = REPO_ROOT / "dashboard" / "public" / "assets" / "rowing"
 
 LAYER_NAMES = ["sky", "mountains", "treeline", "water"]
 
-# A pixel is "neutral gray" (checkerboard filler) when all three channels
-# are within this delta of each other.
-NEUTRAL_DELTA = 15
-# A row is a definite "separator" when this fraction of its pixels are neutral gray.
-SEP_THRESH = 0.95
-# A row is definitely "content" when neutral fraction drops below this.
-CONTENT_THRESH = 0.50
-# Extra rows to extend upward from detected content start.
-# Mountain peaks and tree tips are narrow (few non-neutral pixels per row)
-# so they sit in rows with high neutral-fractions that CONTENT_THRESH misses.
-# Extending by 40 rows captures these features without crossing into the
-# previous separator region.
-TOP_PAD = 40
+# A pixel is "colored content" (not gray filler) when max channel difference > this.
+COLORED_DELTA = 8
 
-# Checkerboard gray range: standard transparency-indicator values used by
-# image editors (light gray ~192, dark gray ~128).
-CHECKER_LO = 115
-CHECKER_HI = 205
+# Checkerboard gray range for transparency removal (after crop).
+# Standard checkerboard uses exactly (128,128,128) and (192,192,192).
+# Keep delta tight so warm/cool near-neutral sky/snow pixels are NOT erased.
+NEUTRAL_DELTA = 5
+CHECKER_LO = 110
+CHECKER_HI = 210
 
-# Layers that should have transparent backgrounds (checkerboard → alpha=0).
-# "water" is a solid layer — keep it opaque.
+# Layers whose gray checkerboard background should become transparent.
 TRANSPARENT_LAYERS = {"sky", "mountains", "treeline"}
 
 
-def row_neutral_fraction(img: Image.Image, y: int) -> float:
-    strip = img.crop((0, y, img.width, y + 1))
-    pixels = list(strip.getdata())
-    neutral = sum(
-        1
-        for r, g, b in pixels
-        if abs(int(r) - int(g)) < NEUTRAL_DELTA
-        and abs(int(r) - int(b)) < NEUTRAL_DELTA
-    )
-    return neutral / img.width
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def is_colored(r: int, g: int, b: int) -> bool:
+    return max(abs(r - g), abs(r - b), abs(g - b)) > COLORED_DELTA
 
 
-def find_content_bands(img: Image.Image) -> list[tuple[int, int]]:
-    """Return (top, bottom) row pairs for each non-background content band.
+def row_has_colored(img: Image.Image, y: int, x0: int = 0, x1: int | None = None) -> bool:
+    x1 = x1 or img.width
+    strip = list(img.crop((x0, y, x1, y + 1)).getdata())
+    return any(is_colored(r, g, b) for r, g, b in strip)
 
-    Coarse detection (CONTENT_THRESH = 0.50) identifies bands where most of the
-    row is actual content. Each band's top boundary is then extended upward by
-    TOP_PAD rows (clamped to the end of the previous band) to include narrow
-    mountain peaks and tree tips that would otherwise be cut off.
+
+def col_has_colored(img: Image.Image, x: int, y0: int, y1: int) -> bool:
+    col = list(img.crop((x, y0, x + 1, y1)).getdata())
+    return any(is_colored(r, g, b) for r, g, b in col)
+
+
+def tight_bbox(
+    img: Image.Image,
+    search_top: int,
+    search_bot: int,
+    search_left: int = 0,
+    search_right: int | None = None,
+) -> tuple[int, int, int, int]:
     """
-    coarse: list[tuple[int, int]] = []
-    in_content = False
+    Find the tightest bounding box containing any colored pixel within
+    the given search region. Returns (top, bot, left, right) where bot and
+    right are exclusive.
+    """
+    sr = search_right or img.width
+
+    top = search_top
+    for y in range(search_top, search_bot):
+        if row_has_colored(img, y, search_left, sr):
+            top = y
+            break
+
+    bot = search_bot
+    for y in range(search_bot - 1, search_top - 1, -1):
+        if row_has_colored(img, y, search_left, sr):
+            bot = y + 1
+            break
+
+    left = search_left
+    for x in range(search_left, sr):
+        if col_has_colored(img, x, top, bot):
+            left = x
+            break
+
+    right = sr
+    for x in range(sr - 1, search_left - 1, -1):
+        if col_has_colored(img, x, top, bot):
+            right = x + 1
+            break
+
+    return top, bot, left, right
+
+
+# ---------------------------------------------------------------------------
+# Band detection: coarse vertical zones between pure-separator rows
+# ---------------------------------------------------------------------------
+
+def find_separator_runs(img: Image.Image) -> list[tuple[int, int]]:
+    """Return list of (start, end) exclusive row ranges that are pure separators
+    (no colored pixel in the entire row).
+    """
+    runs: list[tuple[int, int]] = []
+    in_sep = True
     start = 0
-
     for y in range(img.height):
-        frac = row_neutral_fraction(img, y)
-        if not in_content and frac < CONTENT_THRESH:
-            in_content = True
+        sep = not row_has_colored(img, y)
+        if not in_sep and sep:
+            in_sep = True
             start = y
-        elif in_content and frac > SEP_THRESH:
-            in_content = False
-            coarse.append((start, y))
-
-    if in_content:
-        coarse.append((start, img.height))
-
-    # Extend each band upward by TOP_PAD, clamped so it doesn't overlap the
-    # previous band's end.
-    bands: list[tuple[int, int]] = []
-    for i, (top, bot) in enumerate(coarse):
-        prev_end = bands[-1][1] if bands else 0
-        extended_top = max(prev_end, top - TOP_PAD)
-        bands.append((extended_top, bot))
-
-    return bands
+        elif in_sep and not sep:
+            in_sep = False
+            if start > 0 or y > 0:  # skip initial non-separator edge
+                runs.append((start, y))
+    if in_sep:
+        runs.append((start, img.height))
+    return runs
 
 
-def find_left_content_width(img: Image.Image, top: int, bottom: int) -> int:
+def find_content_zones(img: Image.Image) -> list[tuple[int, int]]:
+    """Return coarse (top, bot) zones between separator runs."""
+    seps = find_separator_runs(img)
+    if not seps:
+        return [(0, img.height)]
+
+    zones: list[tuple[int, int]] = []
+    prev_end = 0
+    for sep_start, sep_end in seps:
+        if sep_start > prev_end:
+            zones.append((prev_end, sep_start))
+        prev_end = sep_end
+    if prev_end < img.height:
+        zones.append((prev_end, img.height))
+
+    return zones
+
+
+# ---------------------------------------------------------------------------
+# Water layer: split off rower preview frames on the right
+# ---------------------------------------------------------------------------
+
+def find_water_right_edge(
+    img: Image.Image,
+    top: int,
+    bot: int,
+) -> int:
     """
-    For a band that may contain a vertical separator (water | rower frames),
-    return the x-coordinate of the first vertical separator that's wide enough
-    to be a real gap (> 5 px). Returns img.width if no separator found.
+    The water layer shares its horizontal band with rower preview frames on the
+    right, separated by a vertical gray gap. Find the x where that gap starts.
     """
-    mid_y = (top + bottom) // 2
-    strip = img.crop((0, mid_y, img.width, mid_y + 1))
-    pixels = list(strip.getdata())
+    mid_y = (top + bot) // 2
+    row = list(img.crop((0, mid_y, img.width, mid_y + 1)).getdata())
 
     in_sep = False
     sep_start = 0
-    for x, (r, g, b) in enumerate(pixels):
-        is_neutral = abs(int(r) - int(g)) < NEUTRAL_DELTA and abs(int(r) - int(b)) < NEUTRAL_DELTA
-        if not in_sep and is_neutral:
+    for x, (r, g, b) in enumerate(row):
+        neutral = not is_colored(r, g, b)
+        if not in_sep and neutral:
             in_sep = True
             sep_start = x
-        elif in_sep and not is_neutral:
+        elif in_sep and not neutral:
             in_sep = False
-            if x - sep_start > 5 and sep_start > img.width * 0.3:
+            # First interior separator wider than 5px and past 30% width
+            if x - sep_start > 5 and sep_start > img.width * 0.30:
                 return sep_start
 
     return img.width
 
 
+# ---------------------------------------------------------------------------
+# Transparency: replace checkerboard gray with alpha=0
+# ---------------------------------------------------------------------------
+
 def remove_checkerboard(img: Image.Image) -> Image.Image:
-    """
-    Convert a cropped RGB layer to RGBA, replacing checkerboard filler pixels
-    (neutral gray in the range 115–205) with fully transparent pixels.
-    """
     rgba = img.convert("RGBA")
     pixels = rgba.load()
     assert pixels is not None
@@ -142,33 +194,45 @@ def remove_checkerboard(img: Image.Image) -> Image.Image:
     return rgba
 
 
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     img = Image.open(SRC_LONG).convert("RGB")
-    bands = find_content_bands(img)
 
-    print(f"Detected {len(bands)} content bands in {SRC_LONG.name}")
+    zones = find_content_zones(img)
+    print(f"Found {len(zones)} coarse content zones")
+    for z in zones:
+        print(f"  rows {z[0]}–{z[1]}")
 
+    if len(zones) < len(LAYER_NAMES):
+        print(f"ERROR: expected {len(LAYER_NAMES)} zones, got {len(zones)}")
+        return
+
+    print()
     for i, name in enumerate(LAYER_NAMES):
-        if i >= len(bands):
-            print(f"  WARNING: no band found for layer '{name}'")
-            continue
-
-        top, bottom = bands[i]
+        z_top, z_bot = zones[i]
 
         if name == "water":
-            right_x = find_left_content_width(img, top, bottom)
+            # Restrict horizontal search to just the water portion
+            water_right = find_water_right_edge(img, z_top, z_bot)
+            top, bot, left, right = tight_bbox(img, z_top, z_bot, 0, water_right)
         else:
-            right_x = img.width
+            top, bot, left, right = tight_bbox(img, z_top, z_bot)
 
-        crop = img.crop((0, top, right_x, bottom))
+        crop = img.crop((left, top, right, bot))
+
         if name in TRANSPARENT_LAYERS:
             crop = remove_checkerboard(crop)
+
         out_path = OUT_DIR / f"{name}.png"
         crop.save(out_path, "PNG")
-        print(f"  {name}.png  ({right_x}×{bottom - top}px)  rows {top}–{bottom}")
+        print(f"  {name}.png  ({right - left}×{bot - top}px)  rows {top}–{bot}  cols {left}–{right}")
 
+    # Copy animation spritesheet
     dst = OUT_DIR / "rower-spritesheet.png"
     shutil.copy2(SRC_ANIM, dst)
     anim = Image.open(dst)
