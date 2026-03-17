@@ -144,10 +144,11 @@ export function LiveMetrics({ metrics, workoutState }: LiveMetricsProps) {
     }
   }, [metrics?.heart_rate_bpm]);
 
-  // Hide HR tile after 5s without data
+  // Hide HR tile after 10s without data — generous to allow for BLE jitter
+  // and brief merge gaps without the tile flickering in/out mid-workout.
   useEffect(() => {
     const id = setInterval(() => {
-      if (Date.now() - lastHrTimestamp.current > 5000) {
+      if (Date.now() - lastHrTimestamp.current > 10000) {
         setHrConnected(false);
       }
     }, 1000);
