@@ -12,7 +12,6 @@ Outputs (dashboard/public/assets/rowing/):
   sky.png, mountains.png, treeline.png, water.png, rower-spritesheet.png
 """
 
-import shutil
 from pathlib import Path
 
 from PIL import Image
@@ -36,6 +35,12 @@ CHECKER_HI = 210
 
 # Layers whose gray checkerboard background should become transparent.
 TRANSPARENT_LAYERS = {"sky", "mountains", "treeline"}
+
+# Threshold for near-white background removal on the rower spritesheet.
+# Pixels where R>240, G>240, B>240, and all channels are within 15 of each other
+# are considered background and made transparent.
+WHITE_THRESHOLD = 240
+WHITE_DELTA = 15
 
 
 # ---------------------------------------------------------------------------
@@ -177,6 +182,77 @@ def find_water_right_edge(
 # Transparency: replace checkerboard gray with alpha=0
 # ---------------------------------------------------------------------------
 
+def remove_white_background(img: Image.Image) -> Image.Image:
+    """Make near-white pixels transparent for the rower spritesheet.
+
+    Uses a flood-fill from each frame's corners to correctly identify the
+    checkerboard background without accidentally removing neutral content pixels
+    (e.g., gray boat wood). A pixel is considered background if it is neutral
+    (all channels within WHITE_DELTA of each other) AND bright (any channel > WHITE_BG_LO).
+    """
+    # Background pixels must be neutral AND at least moderately bright
+    WHITE_BG_LO = 140  # lower bound: checkerboard dark squares ~128, background >= 140
+    rgba = img.convert("RGBA")
+    pixels = rgba.load()
+    assert pixels is not None
+    w, h = rgba.size
+
+    def is_background(r: int, g: int, b: int) -> bool:
+        return (
+            max(abs(int(r) - int(g)), abs(int(r) - int(b)), abs(int(g) - int(b))) < WHITE_DELTA
+            and max(r, g, b) >= WHITE_BG_LO
+        )
+
+    # Flood fill from all frame corners using a per-frame approach
+    # Sheet is NUM_COLS × NUM_ROWS frames
+    fw = w // 5
+    fh = h // 4
+
+    visited = [[False] * w for _ in range(h)]
+
+    for row in range(4):
+        for col in range(5):
+            # Corner seeds for this frame
+            fx0 = col * fw
+            fy0 = row * fh
+            fx1 = min(fx0 + fw, w)
+            fy1 = min(fy0 + fh, h)
+
+            seeds = [
+                (fx0, fy0), (fx1 - 1, fy0),
+                (fx0, fy1 - 1), (fx1 - 1, fy1 - 1),
+            ]
+            # Also seed along top and bottom edges of frame
+            for x in range(fx0, fx1, 4):
+                seeds.append((x, fy0))
+                seeds.append((x, fy1 - 1))
+            for y in range(fy0, fy1, 4):
+                seeds.append((fx0, y))
+                seeds.append((fx1 - 1, y))
+
+            stack = []
+            for sx, sy in seeds:
+                if 0 <= sx < w and 0 <= sy < h and not visited[sy][sx]:
+                    r, g, b, a = pixels[sx, sy]
+                    if is_background(r, g, b):
+                        stack.append((sx, sy))
+                        visited[sy][sx] = True
+
+            while stack:
+                x, y = stack.pop()
+                r, g, b, a = pixels[x, y]
+                if is_background(r, g, b):
+                    pixels[x, y] = (r, g, b, 0)
+                    for nx, ny in [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]:
+                        if fx0 <= nx < fx1 and fy0 <= ny < fy1 and not visited[ny][nx]:
+                            visited[ny][nx] = True
+                            nr, ng, nb, na = pixels[nx, ny]
+                            if is_background(nr, ng, nb):
+                                stack.append((nx, ny))
+
+    return rgba
+
+
 def remove_checkerboard(img: Image.Image) -> Image.Image:
     rgba = img.convert("RGBA")
     pixels = rgba.load()
@@ -232,11 +308,12 @@ def main() -> None:
         crop.save(out_path, "PNG")
         print(f"  {name}.png  ({right - left}×{bot - top}px)  rows {top}–{bot}  cols {left}–{right}")
 
-    # Copy animation spritesheet
+    # Process animation spritesheet: flood-fill background removal per frame
     dst = OUT_DIR / "rower-spritesheet.png"
-    shutil.copy2(SRC_ANIM, dst)
-    anim = Image.open(dst)
-    print(f"  rower-spritesheet.png  ({anim.width}×{anim.height}px)  [copied]")
+    anim_src = Image.open(SRC_ANIM).convert("RGB")
+    anim_rgba = remove_white_background(anim_src)
+    anim_rgba.save(dst, "PNG")
+    print(f"  rower-spritesheet.png  ({anim_rgba.width}×{anim_rgba.height}px)  [background removed via flood-fill]")
 
     print(f"\nAll assets written to {OUT_DIR}")
 
