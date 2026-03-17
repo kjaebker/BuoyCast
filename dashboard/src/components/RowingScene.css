@@ -4,7 +4,7 @@
 .rowing-scene {
   position: relative;
   width: 100%;
-  height: 180px;
+  height: 200px;
   overflow: hidden;
   border-radius: 1rem;
   margin-bottom: 0.75rem;
@@ -12,7 +12,7 @@
 
 @media (min-width: 768px) {
   .rowing-scene {
-    height: 220px;
+    height: 240px;
   }
 }
 
@@ -22,11 +22,12 @@
   inset: 0;
   background: linear-gradient(
     180deg,
-    #0b1628 0%,
-    #101d35 25%,
-    #152847 50%,
-    #1a3358 75%,
-    #1e3a5f 100%
+    #0a1220 0%,
+    #0e1a30 30%,
+    #132444 55%,
+    #183050 70%,
+    #1a3555 85%,
+    #153050 100%
   );
 }
 
@@ -34,7 +35,17 @@
 .rowing-star {
   position: absolute;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.7);
+  animation: star-twinkle 3s ease-in-out infinite;
+}
+
+.rowing-star:nth-child(even) {
+  animation-delay: 1.5s;
+}
+
+@keyframes star-twinkle {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
 }
 
 /* ── Clouds ── */
@@ -43,7 +54,7 @@
   top: 0;
   left: 0;
   right: 0;
-  height: 55%;
+  height: 50%;
   will-change: transform;
 }
 
@@ -58,8 +69,8 @@
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 36%;
-  height: 50%;
+  bottom: 32%;
+  height: 55%;
   will-change: transform;
 }
 
@@ -76,8 +87,8 @@
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 34%;
-  height: 35%;
+  bottom: 28%;
+  height: 40%;
   will-change: transform;
 }
 
@@ -95,13 +106,14 @@
   left: 0;
   right: 0;
   bottom: 0;
-  height: 38%;
+  height: 42%;
   background: linear-gradient(
     180deg,
-    #0d2847 0%,
-    #0a1f3a 30%,
-    #071828 60%,
-    #05111e 100%
+    #0c2240 0%,
+    #0a1c35 25%,
+    #081828 50%,
+    #06131f 80%,
+    #040e18 100%
   );
 }
 
@@ -124,24 +136,25 @@
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 36%;
-  height: 8px;
+  bottom: 38%;
+  height: 24px;
   background: linear-gradient(
     180deg,
-    rgba(30, 70, 120, 0.0) 0%,
-    rgba(30, 80, 140, 0.15) 50%,
-    rgba(20, 50, 90, 0.08) 100%
+    rgba(12, 34, 64, 0.0) 0%,
+    rgba(20, 60, 100, 0.15) 40%,
+    rgba(12, 34, 64, 0.3) 100%
   );
   pointer-events: none;
+  z-index: 2;
 }
 
 /* ── Moon ── */
 .rowing-moon {
   position: absolute;
   border-radius: 50%;
-  background: radial-gradient(circle at 40% 40%, #e8e0c8, #c8b888);
-  box-shadow: 0 0 20px 6px rgba(200, 190, 140, 0.15),
-    0 0 60px 20px rgba(200, 190, 140, 0.06);
+  background: radial-gradient(circle at 40% 40%, #f0e8d0, #d4c490);
+  box-shadow: 0 0 15px 5px rgba(220, 210, 160, 0.2),
+    0 0 50px 15px rgba(200, 190, 140, 0.08);
 }
 
 /* ── Moon reflection on water ── */
@@ -149,8 +162,8 @@
   position: absolute;
   background: linear-gradient(
     180deg,
-    rgba(200, 190, 140, 0.12) 0%,
-    rgba(200, 190, 140, 0.04) 50%,
+    rgba(200, 190, 140, 0.15) 0%,
+    rgba(200, 190, 140, 0.06) 40%,
     transparent 100%
   );
   filter: blur(3px);
@@ -160,18 +173,18 @@
 /* ── Rower + shell ── */
 .rowing-rower {
   position: absolute;
-  bottom: 30%;
+  bottom: 32%;
   left: 50%;
   transform: translateX(-50%);
-  width: 120px;
-  height: 60px;
+  width: 160px;
+  height: 80px;
   z-index: 10;
 }
 
 @media (min-width: 768px) {
   .rowing-rower {
-    width: 140px;
-    height: 70px;
+    width: 180px;
+    height: 90px;
   }
 }
 
@@ -313,7 +326,7 @@
 /* ── Wake ── */
 .rowing-wake {
   position: absolute;
-  bottom: 34%;
+  bottom: 36%;
   z-index: 9;
   transition: opacity 0.8s ease;
 }
@@ -353,7 +366,7 @@
   bottom: 0;
   left: 0;
   right: 0;
-  height: 38%;
+  height: 42%;
   background: linear-gradient(
     90deg,
     transparent 0%,
@@ -385,7 +398,8 @@
   .rowing-oar-right--active,
   .rowing-body--active,
   .rowing-wake-line,
-  .rowing-shimmer {
+  .rowing-shimmer,
+  .rowing-star {
     animation: none !important;
   }
   .rowing-rower {
