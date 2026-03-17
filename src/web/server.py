@@ -317,7 +317,7 @@ def create_app(
         """Delay before service restart to allow response to be sent."""
         await asyncio.sleep(2)
         try:
-            subprocess.run(["sudo", "systemctl", "restart", "waterrower"], check=True)
+            subprocess.run(["sudo", "systemctl", "restart", "buoycast"], check=True)
         except Exception as e:
             logger.error("Service restart failed: %s", e)
 
