@@ -68,9 +68,9 @@ class TestTickrReaderConnection:
         q = event_bus.subscribe(EventType.METRICS_UPDATE)
 
         await reader.start()
-        # Drain enough notifications to fill the buffer (maxlen=6)
+        # Drain enough notifications to fill the buffer (maxlen=10)
         last_bpm = None
-        for _ in range(8):
+        for _ in range(12):
             event = await asyncio.wait_for(q.get(), timeout=1.0)
             last_bpm = event.data.heart_rate_bpm
 
@@ -104,6 +104,80 @@ class TestTickrReaderConnection:
         await reader.start()
         await asyncio.sleep(0.1)
         assert not reader.connected
+        await reader.stop()
+
+
+class TestTickrReaderRRRecovery:
+    async def test_rr_buffer_corruption_recovery(
+        self, event_bus: EventBus, hr_settings: HeartRateSettings
+    ):
+        """When RR buffer gets corrupted (short intervals), the reader should
+        detect the divergence from the BPM field and reset the buffer, returning
+        to plausible values instead of staying stuck at 200+ BPM."""
+        mock = MockBLEClient()
+        # Start with normal HR: BPM=80, RR=750ms (~80 BPM)
+        mock.set_hr(80, [750])
+        mock.set_notify_interval(0.02)
+
+        reader = TickrReader(mock, event_bus, hr_settings, **FAST_TIMING)
+        q = event_bus.subscribe(EventType.METRICS_UPDATE)
+
+        await reader.start()
+        # Let a few normal readings come through
+        for _ in range(5):
+            await asyncio.wait_for(q.get(), timeout=1.0)
+
+        # Simulate corruption: TICKR starts sending short RR intervals (300ms = 200 BPM)
+        # but BPM field stays at 80 (real HR)
+        mock.set_hr(80, [300])
+
+        # Collect readings — after divergence detection (3+ readings), should recover
+        bpm_values = []
+        for _ in range(10):
+            event = await asyncio.wait_for(q.get(), timeout=1.0)
+            bpm_values.append(event.data.heart_rate_bpm)
+
+        # After recovery, BPM should return to near the field BPM (80), not stay at 200.
+        # Rate limiting may cause gradual descent, so just check the last value
+        # is much closer to 80 than to 200.
+        assert bpm_values[-1] < 130, (
+            f"BPM should recover toward field value ~80, got {bpm_values[-1]}"
+        )
+
+        await reader.stop()
+
+    async def test_rate_of_change_limiting(
+        self, event_bus: EventBus, hr_settings: HeartRateSettings
+    ):
+        """HR should not jump more than 15 BPM between consecutive readings."""
+        mock = MockBLEClient()
+        mock.set_hr(80, [750])
+        mock.set_notify_interval(0.02)
+
+        reader = TickrReader(mock, event_bus, hr_settings, **FAST_TIMING)
+        q = event_bus.subscribe(EventType.METRICS_UPDATE)
+
+        await reader.start()
+        # Let initial readings stabilize
+        last_bpm = None
+        for _ in range(5):
+            event = await asyncio.wait_for(q.get(), timeout=1.0)
+            last_bpm = event.data.heart_rate_bpm
+
+        # Sudden jump: change to BPM=200 with matching RR intervals
+        mock.set_hr(200, [300])
+
+        # The first reading after the jump should be rate-limited
+        bpm_values = []
+        for _ in range(3):
+            event = await asyncio.wait_for(q.get(), timeout=1.0)
+            bpm_values.append(event.data.heart_rate_bpm)
+
+        # First value after jump should be at most 15 BPM above previous
+        assert bpm_values[0] <= last_bpm + 15, (
+            f"Expected rate-limited BPM ≤ {last_bpm + 15}, got {bpm_values[0]}"
+        )
+
         await reader.stop()
 
 
