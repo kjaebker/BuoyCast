@@ -57,7 +57,6 @@ fi
 
 # Create data directories
 mkdir -p "$INSTALL_DIR/data/fit"
-chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
 
 # ── Python virtual environment ───────────────────────────────────────
 info "Setting up Python virtual environment..."
@@ -73,6 +72,10 @@ fi
 "$INSTALL_DIR/.venv/bin/pip" install bleak bless dbus-python -q
 
 info "Python packages installed"
+
+# Fix ownership — must happen after venv creation so the venv is owned by pi,
+# not root. update.sh runs pip as sudo -u pi, which requires write access.
+chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
 
 # ── Dashboard (pre-built) ────────────────────────────────────────────
 # The dashboard is built by GitHub Actions (not on the Pi) to avoid the
@@ -138,6 +141,21 @@ fi
 info "Ensuring Bluetooth permissions..."
 usermod -aG bluetooth "$SERVICE_USER" 2>/dev/null || true
 usermod -aG dialout "$SERVICE_USER" 2>/dev/null || true
+
+# ── Sudoers for API-triggered operations ─────────────────────────────
+# The service runs as 'pi' and needs passwordless sudo for update, restart,
+# and reboot — all triggered via /api/system/* endpoints.
+info "Configuring sudoers for service operations..."
+SUDOERS_FILE="/etc/sudoers.d/buoycast"
+cat > "$SUDOERS_FILE" <<EOF
+# BuoyCast — allow the service user to run update/restart/reboot without a password
+$SERVICE_USER ALL=(ALL) NOPASSWD: /bin/bash $INSTALL_DIR/update.sh
+$SERVICE_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart $SERVICE_NAME
+$SERVICE_USER ALL=(ALL) NOPASSWD: /usr/sbin/reboot
+$SERVICE_USER ALL=(ALL) NOPASSWD: /sbin/reboot
+EOF
+chmod 440 "$SUDOERS_FILE"
+info "Sudoers configured"
 
 # ── Done ─────────────────────────────────────────────────────────────
 echo ""
