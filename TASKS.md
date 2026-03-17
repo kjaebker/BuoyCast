@@ -40,3 +40,4 @@ Add new tasks here as they arise.
 | E10 | Deploy: Automated Pi deployment via GitHub Actions release bundles | done | 2026-03-15 |
 | E11 | Frontend: Parallax rowing animation scene between title and metrics | done | 2026-03-16 |
 | E12 | Fix: HR data corruption from RR buffer lock-in, staleness too aggressive, tile disappearing | done | 2026-03-16 |
+| E13 | Frontend: Replace SVG RowingScene with Pixi.js pixel art canvas renderer | done | 2026-03-17 |
