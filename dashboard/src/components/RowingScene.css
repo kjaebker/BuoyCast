@@ -1,10 +1,10 @@
-/* RowingScene — parallax rowing animation */
+/* RowingScene — parallax rowing animation (v2) */
 
 /* ── Container ── */
 .rowing-scene {
   position: relative;
   width: 100%;
-  height: 80px;
+  height: 180px;
   overflow: hidden;
   border-radius: 1rem;
   margin-bottom: 0.75rem;
@@ -12,233 +12,378 @@
 
 @media (min-width: 768px) {
   .rowing-scene {
-    height: 100px;
+    height: 220px;
   }
 }
 
-/* ── Parallax layers (shared) ── */
-.rowing-layer {
+/* ── Sky gradient ── */
+.rowing-sky {
   position: absolute;
   inset: 0;
-  will-change: transform;
-}
-
-/* ── Layer 5: Sky ── */
-.rowing-sky {
   background: linear-gradient(
     180deg,
-    oklch(0.26 0.025 250) 0%,
-    oklch(0.22 0.03 245) 40%,
-    oklch(0.20 0.025 240) 100%
+    #0b1628 0%,
+    #101d35 25%,
+    #152847 50%,
+    #1a3358 75%,
+    #1e3a5f 100%
   );
 }
 
-/* ── Clouds ── */
-.rowing-cloud {
+/* ── Stars (tiny dots in the sky) ── */
+.rowing-star {
   position: absolute;
-  border-radius: 9999px;
-  opacity: 0.12;
-  background: oklch(0.75 0.015 250);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.6);
 }
 
-/* ── Layer 4: Mountains ── */
+/* ── Clouds ── */
+.rowing-clouds {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 55%;
+  will-change: transform;
+}
+
+.rowing-cloud-shape {
+  position: absolute;
+  opacity: 0.15;
+  filter: blur(1px);
+}
+
+/* ── Mountains ── */
 .rowing-mountains {
-  bottom: 0;
-  height: 70%;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 36%;
+  height: 50%;
+  will-change: transform;
 }
 
 .rowing-mountains svg {
   position: absolute;
   bottom: 0;
-  height: 100%;
+  left: 0;
   width: 200%;
+  height: 100%;
 }
 
-/* ── Layer 3: Treeline ── */
+/* ── Treeline ── */
 .rowing-trees {
-  bottom: 0;
-  height: 50%;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 34%;
+  height: 35%;
+  will-change: transform;
 }
 
 .rowing-trees svg {
   position: absolute;
   bottom: 0;
-  height: 100%;
+  left: 0;
   width: 200%;
+  height: 100%;
 }
 
-/* ── Layer 2: Water ── */
+/* ── Water ── */
 .rowing-water {
+  position: absolute;
+  left: 0;
+  right: 0;
   bottom: 0;
-  height: 36%;
+  height: 38%;
   background: linear-gradient(
     180deg,
-    oklch(0.22 0.05 235) 0%,
-    oklch(0.18 0.04 240) 50%,
-    oklch(0.16 0.035 245) 100%
+    #0d2847 0%,
+    #0a1f3a 30%,
+    #071828 60%,
+    #05111e 100%
   );
 }
 
-.rowing-water-ripple {
+.rowing-water-ripples {
   position: absolute;
   inset: 0;
-  opacity: 0.3;
   will-change: transform;
 }
 
-.rowing-water-ripple svg {
+.rowing-water-ripples svg {
   position: absolute;
-  bottom: 0;
-  height: 100%;
+  top: 0;
+  left: 0;
   width: 200%;
+  height: 100%;
 }
 
-/* ── Wake splash ── */
+/* ── Water reflection glow (horizon line) ── */
+.rowing-horizon-glow {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 36%;
+  height: 8px;
+  background: linear-gradient(
+    180deg,
+    rgba(30, 70, 120, 0.0) 0%,
+    rgba(30, 80, 140, 0.15) 50%,
+    rgba(20, 50, 90, 0.08) 100%
+  );
+  pointer-events: none;
+}
+
+/* ── Moon ── */
+.rowing-moon {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 40%, #e8e0c8, #c8b888);
+  box-shadow: 0 0 20px 6px rgba(200, 190, 140, 0.15),
+    0 0 60px 20px rgba(200, 190, 140, 0.06);
+}
+
+/* ── Moon reflection on water ── */
+.rowing-moon-reflection {
+  position: absolute;
+  background: linear-gradient(
+    180deg,
+    rgba(200, 190, 140, 0.12) 0%,
+    rgba(200, 190, 140, 0.04) 50%,
+    transparent 100%
+  );
+  filter: blur(3px);
+  pointer-events: none;
+}
+
+/* ── Rower + shell ── */
+.rowing-rower {
+  position: absolute;
+  bottom: 30%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 120px;
+  height: 60px;
+  z-index: 10;
+}
+
+@media (min-width: 768px) {
+  .rowing-rower {
+    width: 140px;
+    height: 70px;
+  }
+}
+
+/* ── Idle bob ── */
+@keyframes rower-bob {
+  0%,
+  100% {
+    transform: translateX(-50%) translateY(0px);
+  }
+  33% {
+    transform: translateX(-50%) translateY(-2px);
+  }
+  66% {
+    transform: translateX(-50%) translateY(1px);
+  }
+}
+
+.rowing-rower--idle {
+  animation: rower-bob 3.5s ease-in-out infinite;
+}
+
+/* ── Active rowing stroke ── */
+@keyframes rowing-stroke {
+  /* Catch: body forward */
+  0% {
+    transform: translateX(-50%) translateY(0px);
+  }
+  /* Drive start */
+  15% {
+    transform: translateX(-50%) translateY(-2px);
+  }
+  /* Drive power */
+  30% {
+    transform: translateX(-50%) translateY(-3px);
+  }
+  /* Finish */
+  45% {
+    transform: translateX(-50%) translateY(-1px);
+  }
+  /* Recovery */
+  70% {
+    transform: translateX(-50%) translateY(0px);
+  }
+  100% {
+    transform: translateX(-50%) translateY(0px);
+  }
+}
+
+.rowing-rower--active {
+  animation: rowing-stroke var(--stroke-dur, 2s) ease-in-out infinite;
+}
+
+/* ── Oar strokes ── */
+@keyframes oar-left-stroke {
+  0% {
+    transform: rotate(30deg);
+  }
+  30% {
+    transform: rotate(-25deg);
+  }
+  45% {
+    transform: rotate(-30deg);
+  }
+  70% {
+    transform: rotate(15deg);
+  }
+  100% {
+    transform: rotate(30deg);
+  }
+}
+
+@keyframes oar-right-stroke {
+  0% {
+    transform: rotate(-30deg);
+  }
+  30% {
+    transform: rotate(25deg);
+  }
+  45% {
+    transform: rotate(30deg);
+  }
+  70% {
+    transform: rotate(-15deg);
+  }
+  100% {
+    transform: rotate(-30deg);
+  }
+}
+
+.rowing-oar-left--active {
+  transform-origin: 100% 50%;
+  animation: oar-left-stroke var(--stroke-dur, 2s) ease-in-out infinite;
+}
+
+.rowing-oar-right--active {
+  transform-origin: 0% 50%;
+  animation: oar-right-stroke var(--stroke-dur, 2s) ease-in-out infinite;
+}
+
+.rowing-oar-left--idle {
+  transform-origin: 100% 50%;
+  transform: rotate(8deg);
+}
+
+.rowing-oar-right--idle {
+  transform-origin: 0% 50%;
+  transform: rotate(-8deg);
+}
+
+/* ── Body lean (catch ↔ finish) ── */
+@keyframes body-lean {
+  0% {
+    transform: rotate(-8deg) translateX(3px);
+  }
+  30% {
+    transform: rotate(4deg) translateX(-2px);
+  }
+  45% {
+    transform: rotate(6deg) translateX(-3px);
+  }
+  70% {
+    transform: rotate(-2deg) translateX(1px);
+  }
+  100% {
+    transform: rotate(-8deg) translateX(3px);
+  }
+}
+
+.rowing-body--active {
+  transform-origin: 50% 90%;
+  animation: body-lean var(--stroke-dur, 2s) ease-in-out infinite;
+}
+
+.rowing-body--idle {
+  transform-origin: 50% 90%;
+  transform: rotate(0deg);
+}
+
+/* ── Wake ── */
 .rowing-wake {
   position: absolute;
-  bottom: 36%;
-  transition: opacity 0.6s ease;
+  bottom: 34%;
+  z-index: 9;
+  transition: opacity 0.8s ease;
 }
 
 .rowing-wake-line {
   position: absolute;
   height: 1px;
   border-radius: 1px;
-  background: oklch(0.60 0.06 220 / 0.5);
-  animation: wake-drift 1.2s ease-out infinite;
+  background: rgba(100, 160, 220, 0.4);
+  animation: wake-drift 1.4s ease-out infinite;
 }
 
 .rowing-wake-line:nth-child(2) {
-  animation-delay: 0.3s;
+  animation-delay: 0.35s;
   opacity: 0.6;
 }
 
 .rowing-wake-line:nth-child(3) {
-  animation-delay: 0.6s;
-  opacity: 0.4;
+  animation-delay: 0.7s;
+  opacity: 0.35;
 }
 
 @keyframes wake-drift {
   0% {
     transform: translateX(0) scaleX(1);
-    opacity: 0.7;
+    opacity: 0.6;
   }
   100% {
-    transform: translateX(-20px) scaleX(1.5);
+    transform: translateX(-30px) scaleX(2);
     opacity: 0;
   }
 }
 
-/* ── Layer 1: Rower ── */
-.rowing-rower {
-  position: absolute;
-  bottom: 28%;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 80px;
-  height: 48px;
-}
-
-@media (min-width: 768px) {
-  .rowing-rower {
-    width: 96px;
-    height: 56px;
-  }
-}
-
-/* ── Bobbing (idle) ── */
-@keyframes rower-bob {
-  0%, 100% {
-    transform: translateX(-50%) translateY(0px) rotate(0deg);
-  }
-  25% {
-    transform: translateX(-50%) translateY(-2px) rotate(-0.4deg);
-  }
-  75% {
-    transform: translateX(-50%) translateY(1.5px) rotate(0.3deg);
-  }
-}
-
-.rowing-rower--idle {
-  animation: rower-bob 3s ease-in-out infinite;
-}
-
-/* ── Rowing stroke animation ── */
-@keyframes rowing-stroke {
-  /* Catch: leaned forward, oar back */
-  0% {
-    transform: translateX(-50%) translateY(-1px) rotate(-2deg);
-  }
-  /* Drive: power phase, leaning back */
-  35% {
-    transform: translateX(-50%) translateY(-3px) rotate(1.5deg);
-  }
-  /* Finish: leaned back, oar forward */
-  50% {
-    transform: translateX(-50%) translateY(-1px) rotate(2.5deg);
-  }
-  /* Recovery: returning forward */
-  80% {
-    transform: translateX(-50%) translateY(0px) rotate(-0.5deg);
-  }
-  100% {
-    transform: translateX(-50%) translateY(-1px) rotate(-2deg);
-  }
-}
-
-.rowing-rower--active {
-  /* duration overridden inline via style */
-  animation: rowing-stroke 2s ease-in-out infinite;
-}
-
-/* ── Oar animation ── */
-@keyframes oar-stroke {
-  0% { transform: rotate(25deg); }
-  35% { transform: rotate(-20deg); }
-  50% { transform: rotate(-30deg); }
-  80% { transform: rotate(10deg); }
-  100% { transform: rotate(25deg); }
-}
-
-.rowing-oar--active {
-  transform-origin: 70% 20%;
-  animation: oar-stroke 2s ease-in-out infinite;
-}
-
-.rowing-oar--idle {
-  transform-origin: 70% 20%;
-  transform: rotate(5deg);
-}
-
-/* ── Water reflection shimmer ── */
-@keyframes water-shimmer {
-  0%, 100% { opacity: 0.15; }
-  50% { opacity: 0.3; }
-}
-
+/* ── Water shimmer ── */
 .rowing-shimmer {
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
-  height: 36%;
+  height: 38%;
   background: linear-gradient(
     90deg,
     transparent 0%,
-    oklch(0.50 0.08 200 / 0.08) 25%,
-    transparent 50%,
-    oklch(0.50 0.08 200 / 0.06) 75%,
-    transparent 100%
+    rgba(40, 100, 180, 0.04) 20%,
+    transparent 40%,
+    rgba(40, 100, 180, 0.03) 60%,
+    transparent 80%,
+    rgba(40, 100, 180, 0.04) 100%
   );
-  animation: water-shimmer 4s ease-in-out infinite;
+  animation: shimmer-drift 6s ease-in-out infinite;
   pointer-events: none;
+}
+
+@keyframes shimmer-drift {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.8;
+  }
 }
 
 /* ── Reduced motion ── */
 @media (prefers-reduced-motion: reduce) {
   .rowing-rower--idle,
   .rowing-rower--active,
-  .rowing-oar--active,
+  .rowing-oar-left--active,
+  .rowing-oar-right--active,
+  .rowing-body--active,
   .rowing-wake-line,
   .rowing-shimmer {
     animation: none !important;
