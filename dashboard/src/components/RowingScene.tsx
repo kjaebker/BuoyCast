@@ -13,6 +13,7 @@ import { useRef, useEffect } from "react";
 import {
   Application,
   Assets,
+  Graphics,
   TilingSprite,
   Texture,
   Rectangle,
@@ -99,14 +100,18 @@ export function RowingScene({
       await app.init({
         width: W,
         height: H,
-        background: 0xd4895a, // warm sunset — matches sky dithered transparency
+        backgroundAlpha: 0, // transparent canvas — CSS background handles fallback color
         antialias: false,
         resolution: window.devicePixelRatio ?? 1,
         autoDensity: true,
       });
 
       if (destroyed) {
-        app.destroy(true);
+        try {
+          app.destroy(true);
+        } catch {
+          // ignore
+        }
         return;
       }
 
@@ -131,6 +136,10 @@ export function RowingScene({
         const waterY = Math.round(H * 0.58);
         const waterH = H - waterY;
 
+        // Solid background fill to prevent transparent gaps showing through
+        const bgFill = new Graphics();
+        bgFill.rect(0, 0, W, H).fill(0xd4895a);
+
         // Sky: stretches to fill full scene
         const skyScale = H / skyTex.height;
         const sky = new TilingSprite({
@@ -140,8 +149,8 @@ export function RowingScene({
         });
         sky.tileScale.set(skyScale);
 
-        // Mountains: positioned so bottom aligns with upper waterline area
-        const mtnScale = (H * 0.52) / mtnTex.height;
+        // Mountains: positioned so bottom aligns with waterline
+        const mtnScale = (H * 0.45) / mtnTex.height;
         const mtnH = Math.round(mtnTex.height * mtnScale);
         const mtn = new TilingSprite({
           texture: mtnTex,
@@ -152,7 +161,7 @@ export function RowingScene({
         mtn.tileScale.set(mtnScale);
 
         // Treeline: bottom aligns with waterline
-        const treeScale = (H * 0.42) / treeTex.height;
+        const treeScale = (H * 0.38) / treeTex.height;
         const treeH = Math.round(treeTex.height * treeScale);
         const tree = new TilingSprite({
           texture: treeTex,
@@ -162,7 +171,7 @@ export function RowingScene({
         tree.y = waterY - treeH;
         tree.tileScale.set(treeScale);
 
-        // Water: fills bottom of scene
+        // Water: fills bottom of scene; uniform scale preserves aspect ratio
         const waterScale = waterH / waterTex.height;
         const water = new TilingSprite({
           texture: waterTex,
@@ -172,10 +181,11 @@ export function RowingScene({
         water.y = waterY;
         water.tileScale.set(waterScale);
 
-        return { sky, mtn, tree, water };
+        return { bgFill, sky, mtn, tree, water };
       }
 
-      const { sky, mtn, tree, water } = buildScene(W, H);
+      const { bgFill, sky, mtn, tree, water } = buildScene(W, H);
+      app!.stage.addChild(bgFill);
       app!.stage.addChild(sky);
       app!.stage.addChild(mtn);
       app!.stage.addChild(tree);
@@ -252,18 +262,21 @@ export function RowingScene({
         const waterY2 = Math.round(H2 * 0.58);
         const waterH2 = H2 - waterY2;
 
+        bgFill.clear();
+        bgFill.rect(0, 0, W2, H2).fill(0xd4895a);
+
         sky.width = W2;
         sky.height = H2;
         sky.tileScale.set(H2 / skyTex.height);
 
-        const mtnScale2 = (H2 * 0.52) / mtnTex.height;
+        const mtnScale2 = (H2 * 0.45) / mtnTex.height;
         const mtnH2 = Math.round(mtnTex.height * mtnScale2);
         mtn.width = W2;
         mtn.height = mtnH2;
         mtn.y = waterY2 - mtnH2;
         mtn.tileScale.set(mtnScale2);
 
-        const treeScale2 = (H2 * 0.42) / treeTex.height;
+        const treeScale2 = (H2 * 0.38) / treeTex.height;
         const treeH2 = Math.round(treeTex.height * treeScale2);
         tree.width = W2;
         tree.height = treeH2;
@@ -291,7 +304,11 @@ export function RowingScene({
       ro?.disconnect();
       rowerRef.current = null;
       if (app) {
-        app.destroy(true, { children: true });
+        try {
+          app.destroy(true, { children: true });
+        } catch {
+          // Pixi may throw if destroyed before fully initialized (React StrictMode double-invoke)
+        }
         app = null;
       }
     };

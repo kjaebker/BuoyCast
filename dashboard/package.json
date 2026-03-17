@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "screenshot": "npx playwright screenshot --wait-for-timeout 2000 --full-page --viewport-size 430,932 http://localhost:5173/ screenshot-mobile.png && npx playwright screenshot --wait-for-timeout 2000 --full-page --viewport-size 820,1180 http://localhost:5173/ screenshot-tablet.png"
+    "screenshot": "npx playwright screenshot --wait-for-timeout 2000 --full-page --viewport-size 430,932 http://localhost:5173/ screenshot-mobile.png && npx playwright screenshot --wait-for-timeout 2000 --full-page --viewport-size 820,1180 http://localhost:5173/ screenshot-tablet.png",
+    "test-scene": "node ../scripts/screenshot-scene.js"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
