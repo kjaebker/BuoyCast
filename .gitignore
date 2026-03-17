@@ -191,5 +191,8 @@ config.toml
 *.fit
 data/
 
+# Playwright screenshots
+screenshot-*.png
+
 # Nix / direnv
 .direnv/

@@ -32,12 +32,12 @@ function MountainsSVG() {
     <svg viewBox="0 0 1200 200" preserveAspectRatio="xMidYMax slice">
       <defs>
         <linearGradient id="mtn-far" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#1a2844" />
-          <stop offset="100%" stopColor="#162035" />
+          <stop offset="0%" stopColor="#1e3050" />
+          <stop offset="100%" stopColor="#182845" />
         </linearGradient>
         <linearGradient id="mtn-near" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#141e30" />
-          <stop offset="100%" stopColor="#0f1825" />
+          <stop offset="0%" stopColor="#162540" />
+          <stop offset="100%" stopColor="#122035" />
         </linearGradient>
       </defs>
 
@@ -66,7 +66,7 @@ function MountainsSVG() {
       />
 
       {/* Snow highlights on tallest peaks */}
-      <g fill="#2a3a58" opacity="0.5">
+      <g fill="#3a4a68" opacity="0.6">
         <polygon points="185,45 195,58 175,58" />
         <polygon points="290,40 302,55 278,55" />
         <polygon points="515,30 528,46 502,46" />
@@ -83,12 +83,12 @@ function TreelineSVG() {
     <svg viewBox="0 0 1200 120" preserveAspectRatio="xMidYMax slice">
       <defs>
         <linearGradient id="tree-back" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#0e1a12" />
-          <stop offset="100%" stopColor="#0a1410" />
+          <stop offset="0%" stopColor="#0c1a18" />
+          <stop offset="100%" stopColor="#0c2240" />
         </linearGradient>
         <linearGradient id="tree-front" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#0b150e" />
-          <stop offset="100%" stopColor="#07100a" />
+          <stop offset="0%" stopColor="#091510" />
+          <stop offset="100%" stopColor="#0c2240" />
         </linearGradient>
       </defs>
 

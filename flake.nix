@@ -25,12 +25,19 @@
             # Node.js for dashboard
             pkgs.nodejs_22
 
+            # Playwright (headless browser for screenshots)
+            pkgs.playwright-driver.browsers
+
             # Linting (also in venv, but useful standalone)
             pkgs.ruff
 
             # Dev tools
             pkgs.git
           ];
+
+          PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
+          PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "true";
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
 
           shellHook = ''
             # Create venv if it doesn't exist
@@ -61,8 +68,9 @@
             echo "  Node:   $(node --version)"
             echo ""
             echo "Commands:"
-            echo "  pytest tests/ -q          # Run tests"
-            echo "  cd dashboard && npm run dev  # Start dashboard dev server"
+            echo "  pytest tests/ -q                    # Run tests"
+            echo "  cd dashboard && npm run dev          # Start dashboard dev server"
+            echo "  cd dashboard && npm run screenshot   # Capture mobile + tablet screenshots"
           '';
         };
       }
