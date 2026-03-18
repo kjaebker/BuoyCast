@@ -6,14 +6,22 @@
  * and an AnimatedSprite synced to the current stroke rate.
  *
  * Assets (pre-extracted to dashboard/public/assets/rowing/):
- *   sky.png, mountains.png, treeline.png, water.png, rower-spritesheet.png
+ *   far-background.png, mid-background.png, gameplay.png,
+ *   foreground.png, rower-spritesheet.png
+ *
+ * Layer stack (back → front):
+ *   bgFill          — solid dark-navy fill behind all layers
+ *   far-background  — mountains + sunset sky (0.03x scroll)
+ *   mid-background  — forest treeline (0.12x scroll)
+ *   gameplay        — water surface with shoreline (0.30x scroll)
+ *   rower           — animated sprite on the water
+ *   foreground      — cattail/marsh silhouette (0.60x scroll)
  */
 
 import { useRef, useEffect } from "react";
 import {
   Application,
   Assets,
-  Graphics,
   TilingSprite,
   Texture,
   Rectangle,
@@ -88,6 +96,7 @@ export function RowingScene({
     let destroyed = false;
     let app: Application | null = null;
     let ro: ResizeObserver | null = null;
+    let onVisibilityChange: (() => void) | null = null;
 
     (async () => {
       // Nearest-neighbour for crisp pixel art — must set before any texture load
@@ -100,8 +109,10 @@ export function RowingScene({
       await app.init({
         width: W,
         height: H,
-        backgroundAlpha: 0, // transparent canvas — CSS background handles fallback color
+        background: 0x0a1428, // dark navy — shows through transparent sky areas in assets
+        backgroundAlpha: 1,
         antialias: false,
+        hello: false, // suppress console banner
         resolution: window.devicePixelRatio ?? 1,
         autoDensity: true,
       });
@@ -117,13 +128,16 @@ export function RowingScene({
 
       container.appendChild(app.canvas);
 
+      // Nothing in the scene is interactive; skip hit-testing entirely
+      app.stage.eventMode = "none";
+
       // Load all assets in parallel
-      const [skyTex, mtnTex, treeTex, waterTex, rowerSheetTex] =
+      const [farBgTex, midBgTex, gameplayTex, fgTex, rowerSheetTex] =
         await Promise.all([
-          Assets.load(ASSET_BASE + "sky.png"),
-          Assets.load(ASSET_BASE + "mountains.png"),
-          Assets.load(ASSET_BASE + "treeline.png"),
-          Assets.load(ASSET_BASE + "water.png"),
+          Assets.load(ASSET_BASE + "far-background.png"),
+          Assets.load(ASSET_BASE + "mid-background.png"),
+          Assets.load(ASSET_BASE + "gameplay.png"),
+          Assets.load(ASSET_BASE + "foreground.png"),
           Assets.load(ASSET_BASE + "rower-spritesheet.png"),
         ]);
 
@@ -131,70 +145,75 @@ export function RowingScene({
 
       // ── Build scene ──────────────────────────────────────────────
 
+      // Fraction of gameplay image where water content starts (measured from top)
+      const GAMEPLAY_SHORELINE_FRAC = 480 / 864;
+      // Fraction of foreground image where cattail content ends (measured from top)
+      const FG_CONTENT_END_FRAC = 641 / 864;
+
       function buildScene(W: number, H: number) {
-        // Vertical layout constants (as fractions of scene height)
-        const waterY = Math.round(H * 0.58);
-        const waterH = H - waterY;
+        // shorelineY: trees bottom; gameplay.y is offset slightly above this
+        // rowerHullY: boat hull in the open water area
+        const shorelineY = Math.round(H * 0.83);
+        const rowerHullY = Math.round(H * 0.73);
 
-        // Solid background fill to prevent transparent gaps showing through
-        const bgFill = new Graphics();
-        bgFill.rect(0, 0, W, H).fill(0xd4895a);
-
-        // Sky: stretches to fill full scene
-        const skyScale = H / skyTex.height;
-        const sky = new TilingSprite({
-          texture: skyTex,
+        // Far background: 1.2× height-based scale so mountains appear fuller/taller
+        const farBgScale = (H * 1.2) / farBgTex.height;
+        const farBg = new TilingSprite({
+          texture: farBgTex,
           width: W,
           height: H,
         });
-        sky.tileScale.set(skyScale);
+        farBg.tileScale.set(farBgScale);
 
-        // Mountains: positioned so bottom aligns with waterline
-        const mtnScale = (H * 0.45) / mtnTex.height;
-        const mtnH = Math.round(mtnTex.height * mtnScale);
-        const mtn = new TilingSprite({
-          texture: mtnTex,
+        // Mid background: trees (0.62), bottom at shorelineY
+        const midBgScale = (H * 0.62) / midBgTex.height;
+        const midBgH = Math.round(midBgTex.height * midBgScale);
+        const midBg = new TilingSprite({
+          texture: midBgTex,
           width: W,
-          height: mtnH,
+          height: midBgH,
         });
-        mtn.y = waterY - mtnH;
-        mtn.tileScale.set(mtnScale);
+        midBg.y = shorelineY - midBgH;
+        midBg.tileScale.set(midBgScale);
 
-        // Treeline: bottom aligns with waterline
-        const treeScale = (H * 0.38) / treeTex.height;
-        const treeH = Math.round(treeTex.height * treeScale);
-        const tree = new TilingSprite({
-          texture: treeTex,
+        // Gameplay layer: tilePosition.y aligns water content to top of sprite
+        const gameplayScale = H / gameplayTex.height;
+        const gameplayH = H - shorelineY * 0.45;
+        const gameplay = new TilingSprite({
+          texture: gameplayTex,
           width: W,
-          height: treeH,
+          height: gameplayH,
         });
-        tree.y = waterY - treeH;
-        tree.tileScale.set(treeScale);
+        gameplay.y = shorelineY * 0.85;
+        gameplay.tileScale.set(gameplayScale);
+        gameplay.tilePosition.y = -Math.round(H * GAMEPLAY_SHORELINE_FRAC);
 
-        // Water: fills bottom of scene; uniform scale preserves aspect ratio
-        const waterScale = waterH / waterTex.height;
-        const water = new TilingSprite({
-          texture: waterTex,
+        // Foreground: cattail silhouette — align content bottom with scene bottom
+        const fgScale = (H * 0.5) / fgTex.height;
+        const fgH = Math.round(fgTex.height * fgScale);
+        const fg = new TilingSprite({
+          texture: fgTex,
           width: W,
-          height: waterH,
+          height: fgH,
         });
-        water.y = waterY;
-        water.tileScale.set(waterScale);
+        fg.y = H - Math.round(fgH * FG_CONTENT_END_FRAC);
+        fg.tileScale.set(fgScale);
 
-        return { bgFill, sky, mtn, tree, water };
+        return { farBg, midBg, gameplay, fg, shorelineY, rowerHullY };
       }
 
-      const { bgFill, sky, mtn, tree, water } = buildScene(W, H);
-      app!.stage.addChild(bgFill);
-      app!.stage.addChild(sky);
-      app!.stage.addChild(mtn);
-      app!.stage.addChild(tree);
-      app!.stage.addChild(water);
+      const { farBg, midBg, gameplay, fg, rowerHullY } = buildScene(W, H);
+      app!.stage.addChild(farBg);
+      app!.stage.addChild(midBg);
+      app!.stage.addChild(gameplay);
 
       // ── Rower AnimatedSprite ──────────────────────────────────────
 
       const fw = Math.floor(rowerSheetTex.width / NUM_COLS);
       const fh = Math.floor(rowerSheetTex.height / NUM_ROWS);
+      // Skip 1px at top of each row to exclude dark border at y=0 of spritesheet
+      const SPRITE_Y_OFFSET = 1;
+      const effectiveFh = fh - SPRITE_Y_OFFSET;
 
       const frames: Texture[] = [];
       for (let row = 0; row < NUM_ROWS; row++) {
@@ -202,30 +221,33 @@ export function RowingScene({
           frames.push(
             new Texture({
               source: rowerSheetTex.source,
-              frame: new Rectangle(col * fw, row * fh, fw, fh),
+              frame: new Rectangle(col * fw + 25, row * fh + SPRITE_Y_OFFSET, fw, effectiveFh),
             }),
           );
         }
       }
 
-      function makeRower(W: number, H: number): AnimatedSprite {
-        const waterY = Math.round(H * 0.58);
-        const rowerScale = (H * 0.50) / fh;
+      function makeRower(W: number, hullY: number): AnimatedSprite {
+        const rowerScale = (H * 0.30) / effectiveFh;
         const rowerW = fw * rowerScale;
-        const rowerH = fh * rowerScale;
+        const rowerH = effectiveFh * rowerScale;
         const rower = new AnimatedSprite(frames);
         rower.scale.set(rowerScale);
         rower.x = Math.round((W - rowerW) / 2);
-        // Position rower so boat hull sits at waterline
-        rower.y = waterY - Math.round(rowerH * 0.88);
+        // Position rower so boat hull sits at hullY
+        rower.y = hullY - Math.round(rowerH * 0.38);
         rower.animationSpeed = 0;
         rower.currentFrame = 0;
         return rower;
       }
 
-      const rower = makeRower(W, H);
+      const rower = makeRower(W, rowerHullY);
+      let rowerBaseY = rower.y;
       rowerRef.current = rower;
       app!.stage.addChild(rower);
+
+      // Foreground renders in front of the rower for depth
+      app!.stage.addChild(fg);
 
       // Apply current animation state (might have changed while assets loaded)
       if (isRowingRef.current && strokeRateRef.current) {
@@ -235,6 +257,8 @@ export function RowingScene({
 
       // ── Ticker: parallax scroll ──────────────────────────────────
 
+      let bobTime = 0;
+
       app!.ticker.add((ticker) => {
         const dt = ticker.deltaTime;
 
@@ -243,11 +267,28 @@ export function RowingScene({
         currentSpeedRef.current += diff * Math.min(dt * 0.033, 1);
 
         const spd = currentSpeedRef.current;
-        sky.tilePosition.x -= spd * 0.02 * dt;
-        mtn.tilePosition.x -= spd * 0.06 * dt;
-        tree.tilePosition.x -= spd * 0.18 * dt;
-        water.tilePosition.x -= spd * 0.40 * dt;
+
+        // Idle bob: gentle sine wave, fades out as the boat accelerates
+        bobTime += dt * 0.03; // ~3.5 s per cycle at 60 fps
+        const bobStrength = Math.max(0, 1 - spd / 3);
+        rower.y = Math.round(rowerBaseY + 3 * bobStrength * Math.sin(bobTime));
+
+        // Skip scroll writes when effectively stationary
+        if (Math.abs(spd) < 0.01) return;
+
+        farBg.tilePosition.x -= spd * 0.03 * dt;
+        midBg.tilePosition.x -= spd * 0.12 * dt;
+        gameplay.tilePosition.x -= spd * 0.30 * dt;
+        fg.tilePosition.x -= spd * 0.60 * dt;
       });
+
+      // Pause rendering when the tab is hidden to save battery on mobile
+      onVisibilityChange = () => {
+        if (!app) return;
+        if (document.hidden) app.ticker.stop();
+        else app.ticker.start();
+      };
+      document.addEventListener("visibilitychange", onVisibilityChange);
 
       // ── ResizeObserver ───────────────────────────────────────────
 
@@ -259,41 +300,40 @@ export function RowingScene({
 
         app.renderer.resize(W2, H2);
 
-        const waterY2 = Math.round(H2 * 0.58);
-        const waterH2 = H2 - waterY2;
+        const shorelineY2 = Math.round(H2 * 0.83);
+        const rowerHullY2 = Math.round(H2 * 0.73);
 
-        bgFill.clear();
-        bgFill.rect(0, 0, W2, H2).fill(0xd4895a);
+        farBg.width = W2;
+        farBg.height = H2;
+        farBg.tileScale.set((H2 * 1.2) / farBgTex.height);
 
-        sky.width = W2;
-        sky.height = H2;
-        sky.tileScale.set(H2 / skyTex.height);
+        const midBgScale2 = (H2 * 0.62) / midBgTex.height;
+        const midBgH2 = Math.round(midBgTex.height * midBgScale2);
+        midBg.width = W2;
+        midBg.height = midBgH2;
+        midBg.y = shorelineY2 - midBgH2;
+        midBg.tileScale.set(midBgScale2);
 
-        const mtnScale2 = (H2 * 0.45) / mtnTex.height;
-        const mtnH2 = Math.round(mtnTex.height * mtnScale2);
-        mtn.width = W2;
-        mtn.height = mtnH2;
-        mtn.y = waterY2 - mtnH2;
-        mtn.tileScale.set(mtnScale2);
+        gameplay.width = W2;
+        gameplay.height = H2 - (shorelineY2 * 0.45);
+        gameplay.y = (shorelineY2 * 0.85);
+        gameplay.tileScale.set(H2 / gameplayTex.height);
+        gameplay.tilePosition.y = -Math.round(H2 * GAMEPLAY_SHORELINE_FRAC);
 
-        const treeScale2 = (H2 * 0.38) / treeTex.height;
-        const treeH2 = Math.round(treeTex.height * treeScale2);
-        tree.width = W2;
-        tree.height = treeH2;
-        tree.y = waterY2 - treeH2;
-        tree.tileScale.set(treeScale2);
+        const fgScale2 = (H2 * 0.5) / fgTex.height;
+        const fgH2 = Math.round(fgTex.height * fgScale2);
+        fg.width = W2;
+        fg.height = fgH2;
+        fg.y = H2 - Math.round(fgH2 * FG_CONTENT_END_FRAC);
+        fg.tileScale.set(fgScale2);
 
-        water.width = W2;
-        water.height = waterH2;
-        water.y = waterY2;
-        water.tileScale.set(waterH2 / waterTex.height);
-
-        const rowerScale2 = (H2 * 0.50) / fh;
+        const rowerScale2 = (H2 * 0.30) / effectiveFh;
         const rowerW2 = fw * rowerScale2;
-        const rowerH2 = fh * rowerScale2;
+        const rowerH2 = effectiveFh * rowerScale2;
         rower.scale.set(rowerScale2);
         rower.x = Math.round((W2 - rowerW2) / 2);
-        rower.y = waterY2 - Math.round(rowerH2 * 0.88);
+        rowerBaseY = rowerHullY2 - Math.round(rowerH2 * 0.38);
+        rower.y = rowerBaseY;
       });
 
       ro.observe(container);
@@ -302,6 +342,9 @@ export function RowingScene({
     return () => {
       destroyed = true;
       ro?.disconnect();
+      if (onVisibilityChange) {
+        document.removeEventListener("visibilitychange", onVisibilityChange);
+      }
       rowerRef.current = null;
       if (app) {
         try {
