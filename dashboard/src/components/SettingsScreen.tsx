@@ -4,8 +4,9 @@
  */
 
 import { useState, useEffect } from "react";
-import { ArrowLeft, Wifi, WifiOff, Heart, HeartOff, UploadCloud, Upload, RefreshCw, RotateCcw, Download, CheckCircle2, AlertCircle } from "lucide-react";
+import { ArrowLeft, Wifi, WifiOff, Heart, HeartOff, UploadCloud, Upload, RefreshCw, RotateCcw, Download, CheckCircle2, AlertCircle, Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
+import * as api from "@/lib/api";
 import type { SystemStatus, StravaStatus, AppSettings, UpdateInfo } from "@/types";
 
 type SettingsScreenProps = {
@@ -198,7 +199,7 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
                 icon={status?.tickr_connected ? <Heart className="h-5 w-5 fill-current" /> : <HeartOff className="h-5 w-5" />}
                 iconTone={status?.tickr_connected ? "rose" : "muted"}
                 title={status?.tickr_connected ? "TICKR Connected" : "TICKR Disconnected"}
-                subtitle="Wahoo TICKR monitor"
+                subtitle={status?.tickr_paused ? "Reading paused" : "Auto-reconnect active"}
                 action={
                   <button
                     onClick={handleHrToggle}
@@ -223,6 +224,47 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
                   className="h-6 w-6 rounded-md border-border accent-primary"
                 />
               </label>
+            </div>
+          </section>
+
+          {/* Workout State */}
+          <section>
+            <h2 className="mb-3 text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              Workout State
+            </h2>
+            <div className="space-y-3">
+              <SettingCard
+                icon={<Activity className="h-5 w-5" />}
+                iconTone={status?.workout_state === "ACTIVE" ? "teal" : status?.workout_state === "PAUSED" ? "primary" : "muted"}
+                title={status?.workout_state ?? "Unknown"}
+                subtitle={
+                  status?.workout_state === "IDLE"
+                    ? "Ready for a new workout"
+                    : status?.workout_state === "ACTIVE"
+                      ? "Workout in progress"
+                      : status?.workout_state === "PAUSED"
+                        ? "Workout paused"
+                        : status?.workout_state === "SUMMARY"
+                          ? "Waiting for completion screen"
+                          : "Loading..."
+                }
+                action={
+                  status?.workout_state && status.workout_state !== "IDLE" ? (
+                    <button
+                      onClick={async () => {
+                        if (!confirm("Force reset to IDLE? If a workout is active, it will be ended and data saved.")) return;
+                        await api.forceResetWorkout().catch(() => {});
+                        const newStatus = await fetch("/api/status").then(r => r.json());
+                        setStatus(newStatus);
+                      }}
+                      className="rounded-full border border-destructive/50 bg-destructive/10 px-4 py-2 text-sm font-medium text-destructive hover:bg-destructive/20 transition-colors"
+                    >
+                      <RotateCcw className="mr-1.5 inline h-3.5 w-3.5" />
+                      Force Reset
+                    </button>
+                  ) : undefined
+                }
+              />
             </div>
           </section>
 
