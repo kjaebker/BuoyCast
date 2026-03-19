@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json as _json
 import logging
 import subprocess
 import time
@@ -18,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.requests import Request
 
 from src.events import EventBus, EventType
-from src.models import RowingMetrics, WorkoutState, WSMessage
+from src.models import RowingMetrics, WorkoutState
 from src.web.routes.settings import router as settings_router
 from src.web.routes.strava import router as strava_router
 from src.web.routes.workouts import router as workouts_router
@@ -58,50 +59,47 @@ async def check_git_updates() -> dict:
         }
 
     try:
-        # Run git commands as the pi user to avoid permission issues
-        # (the service runs as pi, but .git may have mixed ownership)
-        git_cmd = ["sudo", "-u", "pi", "git", "-C", str(git_dir)]
+        # Base git command: skip safe.directory ownership check (the repo
+        # may be owned by a different user than the service process, e.g.
+        # root-owned .git in /home/pi/BuoyCast).
+        git_cmd = ["git", "-C", str(git_dir), "-c", "safe.directory=*"]
 
-        # Fetch latest from origin (non-blocking via asyncio)
-        proc = await asyncio.create_subprocess_exec(
-            *git_cmd, "fetch", "origin", "main", "--quiet",
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-        )
-        _, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
-        if proc.returncode != 0:
+        async def _git(*args: str) -> tuple[int, str, str]:
+            """Run a git command asynchronously, returning (rc, stdout, stderr)."""
+            proc = await asyncio.create_subprocess_exec(
+                *git_cmd, *args,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=30)
+            return (
+                proc.returncode or 0,
+                stdout_b.decode().strip(),
+                stderr_b.decode().strip(),
+            )
+
+        # Fetch latest from origin
+        rc, _, err = await _git("fetch", "origin", "main", "--quiet")
+        if rc != 0:
             return {
                 "current_sha": None,
                 "remote_sha": None,
                 "update_available": False,
                 "commits_behind": 0,
                 "latest_commit_message": None,
-                "error": f"git fetch failed: {stderr.decode().strip()}",
+                "error": f"git fetch failed: {err}",
             }
 
         # Get local and remote HEAD
-        local = subprocess.run(
-            [*git_cmd, "rev-parse", "HEAD"],
-            capture_output=True, text=True, timeout=5,
-        ).stdout.strip()
-
-        remote = subprocess.run(
-            [*git_cmd, "rev-parse", "origin/main"],
-            capture_output=True, text=True, timeout=5,
-        ).stdout.strip()
+        _, local, _ = await _git("rev-parse", "HEAD")
+        _, remote, _ = await _git("rev-parse", "origin/main")
 
         # Count commits behind
-        behind_output = subprocess.run(
-            [*git_cmd, "rev-list", "--count", f"HEAD..origin/main"],
-            capture_output=True, text=True, timeout=5,
-        ).stdout.strip()
+        _, behind_output, _ = await _git("rev-list", "--count", "HEAD..origin/main")
         commits_behind = int(behind_output) if behind_output.isdigit() else 0
 
         # Get latest remote commit message
-        latest_msg = subprocess.run(
-            [*git_cmd, "log", "origin/main", "-1", "--format=%s"],
-            capture_output=True, text=True, timeout=5,
-        ).stdout.strip()
+        _, latest_msg, _ = await _git("log", "origin/main", "-1", "--format=%s")
 
         return {
             "current_sha": local[:8],
@@ -419,38 +417,51 @@ def create_app(
     return app
 
 
+def _json_dumps(obj: Any) -> str:
+    """Fast JSON serialization for WS messages — skips Pydantic overhead."""
+    return _json.dumps(obj, separators=(",", ":"))
+
+
 async def _ws_broadcast_loop(app_state: AppState) -> None:
-    """Subscribe to events and broadcast to all connected WebSocket clients."""
+    """Subscribe to events and broadcast to all connected WebSocket clients.
+
+    Uses a fan-in pattern: one lightweight forwarder task per source queue
+    pushes events into a single output queue, avoiding the previous approach
+    of creating/cancelling ~10 asyncio.Tasks per event (~50 tasks/sec).
+    """
     bus = app_state.event_bus
     if bus is None:
         return
 
     # Subscribe to merged metrics and all workout state events
-    metrics_q = bus.subscribe(EventType.MERGED_METRICS)
-    started_q = bus.subscribe(EventType.WORKOUT_STARTED)
-    paused_q = bus.subscribe(EventType.WORKOUT_PAUSED)
-    resumed_q = bus.subscribe(EventType.WORKOUT_RESUMED)
-    ended_q = bus.subscribe(EventType.WORKOUT_ENDED)
-    idle_q = bus.subscribe(EventType.IDLE_WARNING)
-    s4_conn_q = bus.subscribe(EventType.S4_CONNECTED)
-    s4_disc_q = bus.subscribe(EventType.S4_DISCONNECTED)
+    event_types = [
+        EventType.MERGED_METRICS,
+        EventType.WORKOUT_STARTED,
+        EventType.WORKOUT_PAUSED,
+        EventType.WORKOUT_RESUMED,
+        EventType.WORKOUT_ENDED,
+        EventType.IDLE_WARNING,
+        EventType.S4_CONNECTED,
+        EventType.S4_DISCONNECTED,
+        EventType.TICKR_CONNECTED,
+        EventType.TICKR_DISCONNECTED,
+    ]
 
-    queues = [metrics_q, started_q, paused_q, resumed_q, ended_q, idle_q, s4_conn_q, s4_disc_q]
+    source_queues = [bus.subscribe(et) for et in event_types]
+    fan_in: asyncio.Queue = asyncio.Queue()
 
-    while True:
-        # Wait for any event from any queue
-        done, _ = await asyncio.wait(
-            [asyncio.create_task(q.get()) for q in queues],
-            return_when=asyncio.FIRST_COMPLETED,
-        )
+    async def _forwarder(src: asyncio.Queue) -> None:
+        """Forward events from a source queue to the shared fan-in queue."""
+        while True:
+            event = await src.get()
+            await fan_in.put(event)
 
-        for task in done:
-            try:
-                event = task.result()
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                continue
+    # Start one forwarder per source — lightweight, long-lived tasks
+    forwarders = [asyncio.create_task(_forwarder(q)) for q in source_queues]
+
+    try:
+        while True:
+            event = await fan_in.get()
 
             # Update last metrics timestamp
             if event.type == EventType.MERGED_METRICS and isinstance(
@@ -458,37 +469,49 @@ async def _ws_broadcast_loop(app_state: AppState) -> None:
             ):
                 app_state.last_metrics_ts = event.data.timestamp
 
-            # Track S4 connection state
+            # Track device connection state
             if event.type == EventType.S4_CONNECTED:
                 app_state.s4_connected = True
             elif event.type == EventType.S4_DISCONNECTED:
                 app_state.s4_connected = False
+            elif event.type == EventType.TICKR_CONNECTED:
+                app_state.tickr_connected = True
+            elif event.type == EventType.TICKR_DISCONNECTED:
+                app_state.tickr_connected = False
 
-            # Build WSMessage
+            # Build JSON message directly — avoids Pydantic WSMessage overhead
             if event.type == EventType.MERGED_METRICS and isinstance(
                 event.data, RowingMetrics
             ):
-                msg = WSMessage(
-                    type="metrics_update",
-                    data=event.data.model_dump(mode="json"),
-                )
+                msg_json = _json_dumps({
+                    "type": "metrics_update",
+                    "data": event.data.model_dump(mode="json"),
+                })
             elif event.type in (EventType.S4_CONNECTED, EventType.S4_DISCONNECTED):
                 reader = app_state.s4_reader
-                msg = WSMessage(
-                    type="s4_status",
-                    data={
+                msg_json = _json_dumps({
+                    "type": "s4_status",
+                    "data": {
                         "connected": event.type == EventType.S4_CONNECTED,
                         "paused": reader.paused if reader else False,
                     },
-                )
+                })
+            elif event.type in (EventType.TICKR_CONNECTED, EventType.TICKR_DISCONNECTED):
+                reader = app_state.tickr_reader
+                msg_json = _json_dumps({
+                    "type": "tickr_status",
+                    "data": {
+                        "connected": event.type == EventType.TICKR_CONNECTED,
+                        "paused": reader.paused if reader else False,
+                    },
+                })
             else:
-                msg = WSMessage(
-                    type=event.type.value,
-                    data=event.data if isinstance(event.data, dict) else {},
-                )
+                msg_json = _json_dumps({
+                    "type": event.type.value,
+                    "data": event.data if isinstance(event.data, dict) else {},
+                })
 
             # Broadcast to all clients
-            msg_json = msg.model_dump_json()
             disconnected = set()
             for ws in app_state.ws_clients:
                 try:
@@ -496,7 +519,8 @@ async def _ws_broadcast_loop(app_state: AppState) -> None:
                 except Exception:
                     disconnected.add(ws)
             app_state.ws_clients -= disconnected
-
-        # Cancel remaining pending tasks
-        for task in _ if _ else set():
-            task.cancel()
+    finally:
+        for t in forwarders:
+            t.cancel()
+        for et, q in zip(event_types, source_queues):
+            bus.unsubscribe(et, q)

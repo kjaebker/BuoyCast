@@ -80,9 +80,15 @@ async def delete_workout_endpoint(request: Request, workout_id: str):
 
 @router.post("/workout/start")
 async def start_workout(request: Request):
-    """Start a new workout. Returns 409 if not in IDLE state."""
+    """Start a new workout.
+
+    If the state machine is stuck in SUMMARY (e.g. the reset call was lost),
+    auto-resets to IDLE first.  Returns 409 only for genuinely invalid states.
+    """
     state = _get_state(request)
     sm = state.state_machine
+    if sm.state == WorkoutState.SUMMARY:
+        await sm.reset()
     new_state = await sm.start()
     return {"state": new_state.value}
 
@@ -128,6 +134,20 @@ async def reset_workout(request: Request):
     sm = state.state_machine
     new_state = await sm.reset()
     return {"state": new_state.value}
+
+
+@router.post("/workout/force-reset")
+async def force_reset_workout(request: Request):
+    """Force the state machine back to IDLE from any state.
+
+    If ACTIVE or PAUSED, the workout is ended first (data is flushed).
+    Use this when the state gets stuck and normal transitions fail.
+    """
+    state = _get_state(request)
+    sm = state.state_machine
+    old_state = sm.state.value
+    new_state = await sm.force_reset()
+    return {"state": new_state.value, "previous_state": old_state}
 
 
 # --- Upload / skip ---

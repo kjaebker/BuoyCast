@@ -140,3 +140,21 @@ class WorkoutStateMachine:
         if self._state == WorkoutState.PAUSED:
             return await self.resume()
         return None
+
+    async def force_reset(self) -> WorkoutState:
+        """Force transition to IDLE from any state.
+
+        If currently ACTIVE or PAUSED, emits WORKOUT_ENDED first so the
+        recorder flushes data, then resets to IDLE.  Safe to call when
+        already IDLE (no-op).
+        """
+        if self._state == WorkoutState.IDLE:
+            return self._state
+
+        if self._state in (WorkoutState.ACTIVE, WorkoutState.PAUSED):
+            await self._transition("end")
+
+        if self._state == WorkoutState.SUMMARY:
+            await self._transition("reset")
+
+        return self._state

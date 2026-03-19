@@ -30,6 +30,8 @@ class HeartRateSettings(BaseModel):
     # When True, the BPM field is halved; this is used as a fallback when RR
     # interval data is unavailable or all intervals are flagged as outliers.
     bpm_field_doubled: bool = False
+    debug_capture: bool = False
+    debug_capture_dir: str = "data/hr_debug"
 
 
 class WorkoutSettings(BaseModel):
