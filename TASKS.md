@@ -41,3 +41,10 @@ Add new tasks here as they arise.
 | E11 | Frontend: Parallax rowing animation scene between title and metrics | done | 2026-03-16 |
 | E12 | Fix: HR data corruption from RR buffer lock-in, staleness too aggressive, tile disappearing | done | 2026-03-16 |
 | E13 | Frontend: Replace SVG RowingScene with Pixi.js pixel art canvas renderer | done | 2026-03-17 |
+| E14 | Backend: Add raw BLE HR data capture to file for debugging + fix RR corruption cross-check bug | done | 2026-03-19 |
+| E15 | Frontend: Move HR out of stats grid into stroke-rate-over-time chart (dual-axis HR+SR sparkline with current HR label, show only when connected, longer grace period before hiding) | done | 2026-03-19 |
+| E16 | Frontend: Fix rowing animation height on iPad landscape (too tall) | done | 2026-03-19 |
+| E17 | Frontend: Simplify stats grid — remove color differentiation, reorder to: pace, stroke rate, power, time, distance, calories | done | 2026-03-19 |
+| E18 | Backend: Fix workout state management — audit state machine transitions, resolve 409 Conflict errors when starting workouts after prior sessions | done | 2026-03-19 |
+| E19 | Frontend: Settings — add workout state display with force-reset, fix TICKR connected tracking | done | 2026-03-19 |
+| E20 | Performance review: audit CPU/memory/event-bus/rendering efficiency for Pi Zero 2W | done | 2026-03-19 |

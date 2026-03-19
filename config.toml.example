@@ -14,6 +14,8 @@ enabled = true
 device_mac = ""                # Wahoo TICKR MAC (e.g. "A4:34:F1:XX:XX:XX")
 device_name = ""               # e.g. "TICKR XXXX"
 required = false               # workout proceeds without HR if strap unavailable
+debug_capture = false          # write raw BLE HR data to JSONL file for analysis
+debug_capture_dir = "data/hr_debug"
 
 [workout]
 auto_pause_idle_s = 30         # pause after 30s no strokes

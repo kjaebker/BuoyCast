@@ -61,8 +61,13 @@ function App() {
         <RowingDetectedPrompt
           onStart={async () => {
             setRowingPromptDismissed(true);
-            await api.resetWorkout().catch(() => {}); // no-op if not in SUMMARY
-            await api.startWorkout().catch(() => {});
+            // startWorkout auto-resets from SUMMARY; force-reset handles other stuck states
+            try {
+              await api.startWorkout();
+            } catch {
+              await api.forceResetWorkout().catch(() => {});
+              await api.startWorkout().catch(() => {});
+            }
           }}
           onDismiss={() => setRowingPromptDismissed(true)}
         />

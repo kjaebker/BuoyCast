@@ -99,21 +99,23 @@ class TestRejectOutOfRange:
         with pytest.raises(ValueError, match="out of range"):
             parse_hr_measurement(data)
 
-    def test_rr_too_low(self):
-        # RR interval of 100ms (too low, min 200ms)
+    def test_rr_too_low_skipped(self):
+        # RR interval of 100ms (too low, min 200ms) — skipped, not an error
         rr_raw = round(100 * 1024 / 1000)
         data = bytearray([0x10, 140])
         data.extend(rr_raw.to_bytes(2, byteorder="little"))
-        with pytest.raises(ValueError, match="RR interval out of range"):
-            parse_hr_measurement(data)
+        bpm, rr = parse_hr_measurement(data)
+        assert bpm == 140
+        assert rr == []  # out-of-range RR silently dropped
 
-    def test_rr_too_high(self):
-        # RR interval of 2500ms (too high, max 2000ms)
+    def test_rr_too_high_skipped(self):
+        # RR interval of 2500ms (too high, max 2000ms) — skipped, not an error
         rr_raw = round(2500 * 1024 / 1000)
         data = bytearray([0x10, 140])
         data.extend(rr_raw.to_bytes(2, byteorder="little"))
-        with pytest.raises(ValueError, match="RR interval out of range"):
-            parse_hr_measurement(data)
+        bpm, rr = parse_hr_measurement(data)
+        assert bpm == 140
+        assert rr == []  # out-of-range RR silently dropped
 
 
 class TestRealTickrPackets:

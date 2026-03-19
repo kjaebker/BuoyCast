@@ -1,11 +1,10 @@
 """Event bus for inter-component communication via asyncio.Queue."""
 
 import asyncio
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
-
-from pydantic import BaseModel, Field
 
 
 class EventType(str, Enum):
@@ -25,12 +24,18 @@ class EventType(str, Enum):
     STRAVA_UPLOAD_STATUS = "strava_upload_status"
 
 
-class Event(BaseModel):
-    """Typed event envelope carried on the bus."""
+@dataclass(slots=True)
+class Event:
+    """Typed event envelope carried on the bus.
+
+    Uses a dataclass instead of Pydantic BaseModel for minimal overhead —
+    events are created at high frequency (~5/sec × N subscribers) on the
+    hot path and never cross a trust boundary that requires validation.
+    """
 
     type: EventType
     data: Any = None
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
+    timestamp: datetime = field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
 
 class EventBus:

@@ -6,7 +6,7 @@
  */
 
 import { useRef, useState, useEffect } from "react";
-import { Activity, Timer, Ruler, Gauge, Zap, Flame, Heart } from "lucide-react";
+import { Activity, Timer, Ruler, Gauge, Zap, Flame } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatTime, formatPace, formatDistance, formatNum } from "@/lib/format";
 import { MetricSparkline } from "./MetricSparkline";
@@ -101,6 +101,7 @@ const ACTIVE_MESSAGES = [
 
 export function LiveMetrics({ metrics, workoutState }: LiveMetricsProps) {
   const strokeRateHistoryRef = useRef<number[]>([]);
+  const heartRateHistoryRef = useRef<number[]>([]);
   const lastActiveStrokeMs = useRef<number>(0);
   const lastHrTimestamp = useRef<number>(0);
   const [effectiveStrokeRate, setEffectiveStrokeRate] = useState<number | null>(null);
@@ -144,11 +145,11 @@ export function LiveMetrics({ metrics, workoutState }: LiveMetricsProps) {
     }
   }, [metrics?.heart_rate_bpm]);
 
-  // Hide HR tile after 10s without data — generous to allow for BLE jitter
-  // and brief merge gaps without the tile flickering in/out mid-workout.
+  // Hide HR from the chart after 15s without data — generous to allow for
+  // BLE jitter and brief merge gaps without the chart flickering mid-workout.
   useEffect(() => {
     const id = setInterval(() => {
-      if (Date.now() - lastHrTimestamp.current > 10000) {
+      if (Date.now() - lastHrTimestamp.current > 15_000) {
         setHrConnected(false);
       }
     }, 1000);
@@ -163,6 +164,13 @@ export function LiveMetrics({ metrics, workoutState }: LiveMetricsProps) {
     const history = strokeRateHistoryRef.current;
     history.push(strokeRateForDisplay);
     if (history.length > 60) history.shift();
+  }
+
+  // Record HR values for the sparkline (last 60 readings, ~1Hz).
+  if (metrics?.heart_rate_bpm != null) {
+    const hrHistory = heartRateHistoryRef.current;
+    hrHistory.push(metrics.heart_rate_bpm);
+    if (hrHistory.length > 60) hrHistory.shift();
   }
 
   const isPaused = workoutState === "PAUSED";
@@ -210,64 +218,49 @@ export function LiveMetrics({ metrics, workoutState }: LiveMetricsProps) {
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
         <MetricTile
-          icon={<Timer className="h-3.5 w-3.5" />}
-          label="Time"
-          value={formatTime(metrics?.elapsed_seconds ?? null)}
-          tone="slate"
-        />
-        <MetricTile
-          icon={<Ruler className="h-3.5 w-3.5" />}
-          label="Distance"
-          value={formatDistance(metrics?.distance_m ?? null)}
-          unit="m"
-          tone="teal"
-        />
-        <MetricTile
           icon={<Gauge className="h-3.5 w-3.5" />}
           label="Pace"
           value={formatPace(metrics?.pace_s_per_500m ?? null)}
           unit="/500m"
-          tone="ember"
         />
         <MetricTile
           icon={<Activity className="h-3.5 w-3.5" />}
           label="Stroke Rate"
           value={formatNum(strokeRateForDisplay, 1)}
           unit="spm"
-          tone="ember"
-          highlight
         />
         <MetricTile
           icon={<Zap className="h-3.5 w-3.5" />}
           label="Power"
           value={formatNum(metrics?.power_watts ?? null)}
           unit="W"
-          tone="teal"
+        />
+        <MetricTile
+          icon={<Timer className="h-3.5 w-3.5" />}
+          label="Time"
+          value={formatTime(metrics?.elapsed_seconds ?? null)}
+        />
+        <MetricTile
+          icon={<Ruler className="h-3.5 w-3.5" />}
+          label="Distance"
+          value={formatDistance(metrics?.distance_m ?? null)}
+          unit="m"
         />
         <MetricTile
           icon={<Flame className="h-3.5 w-3.5" />}
           label="Calories"
           value={formatNum(metrics?.calories ?? null)}
           unit="kcal"
-          tone="ember"
         />
-        {hrConnected && (
-          <MetricTile
-            icon={<Heart className="h-3.5 w-3.5 fill-current" />}
-            label="Heart Rate"
-            value={formatNum(metrics?.heart_rate_bpm ?? null)}
-            unit="bpm"
-            tone="rose"
-            pulseRate={metrics?.heart_rate_bpm}
-          />
-        )}
       </div>
 
-      <div className="mt-4 hidden md:block">
+      <div className="mt-4">
         <MetricSparkline
-          data={strokeRateHistoryRef.current}
+          strokeRateData={strokeRateHistoryRef.current}
+          heartRateData={heartRateHistoryRef.current}
+          currentHr={metrics?.heart_rate_bpm ?? null}
+          hrConnected={hrConnected}
           label="Stroke rate, last 60 seconds"
-          color="var(--color-chart-2)"
         />
       </div>
     </div>
