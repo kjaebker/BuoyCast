@@ -218,46 +218,39 @@ export function LiveMetrics({ metrics, workoutState }: LiveMetricsProps) {
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
         <MetricTile
-          icon={<Timer className="h-3.5 w-3.5" />}
-          label="Time"
-          value={formatTime(metrics?.elapsed_seconds ?? null)}
-          tone="slate"
-        />
-        <MetricTile
-          icon={<Ruler className="h-3.5 w-3.5" />}
-          label="Distance"
-          value={formatDistance(metrics?.distance_m ?? null)}
-          unit="m"
-          tone="teal"
-        />
-        <MetricTile
           icon={<Gauge className="h-3.5 w-3.5" />}
           label="Pace"
           value={formatPace(metrics?.pace_s_per_500m ?? null)}
           unit="/500m"
-          tone="ember"
         />
         <MetricTile
           icon={<Activity className="h-3.5 w-3.5" />}
           label="Stroke Rate"
           value={formatNum(strokeRateForDisplay, 1)}
           unit="spm"
-          tone="ember"
-          highlight
         />
         <MetricTile
           icon={<Zap className="h-3.5 w-3.5" />}
           label="Power"
           value={formatNum(metrics?.power_watts ?? null)}
           unit="W"
-          tone="teal"
+        />
+        <MetricTile
+          icon={<Timer className="h-3.5 w-3.5" />}
+          label="Time"
+          value={formatTime(metrics?.elapsed_seconds ?? null)}
+        />
+        <MetricTile
+          icon={<Ruler className="h-3.5 w-3.5" />}
+          label="Distance"
+          value={formatDistance(metrics?.distance_m ?? null)}
+          unit="m"
         />
         <MetricTile
           icon={<Flame className="h-3.5 w-3.5" />}
           label="Calories"
           value={formatNum(metrics?.calories ?? null)}
           unit="kcal"
-          tone="ember"
         />
       </div>
 
