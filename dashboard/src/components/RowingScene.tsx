@@ -39,10 +39,16 @@ type RowingSceneProps = {
 
 const ASSET_BASE = "/assets/rowing/";
 
-// Spritesheet layout: 5 columns × 4 rows = 20 frames
-const NUM_COLS = 5;
+// Spritesheet layout: 4 columns × 4 rows — each row is an independent cycle
+const NUM_COLS = 4;
 const NUM_ROWS = 4;
-const NUM_FRAMES = NUM_COLS * NUM_ROWS;
+const ANIM_ROW = 0; // which row to use for the looping animation
+
+// Global scroll speed scale — increase to scroll faster, decrease to slow down
+const SCROLL_SCALE = 0.45;
+
+const FRAME_SEQUENCE = [0, 1, 2, 3];
+const NUM_FRAMES = FRAME_SEQUENCE.length;
 
 function paceToSpeed(pace: number | null): number {
   if (!pace || pace <= 0) return 0;
@@ -63,6 +69,7 @@ export function RowingScene({
   const rowerRef = useRef<AnimatedSprite | null>(null);
   const targetSpeedRef = useRef(0);
   const currentSpeedRef = useRef(0);
+  const targetAnimSpeedRef = useRef(0);
 
   // Keep derived state in refs so async init can read current values
   const isRowingRef = useRef(false);
@@ -74,8 +81,9 @@ export function RowingScene({
   isRowingRef.current = isRowing;
   strokeRateRef.current = strokeRate;
   targetSpeedRef.current = isRowing ? paceToSpeed(pace) : 0;
+  targetAnimSpeedRef.current = isRowing && strokeRate ? (NUM_FRAMES * strokeRate) / 3600 : 0;
 
-  // Update rower animation whenever stroke rate / active state changes
+  // Update rower play/stop state; speed is lerped in the ticker
   useEffect(() => {
     const rower = rowerRef.current;
     if (!rower) return;
@@ -83,7 +91,6 @@ export function RowingScene({
       rower.stop();
       rower.currentFrame = 0;
     } else {
-      rower.animationSpeed = (NUM_FRAMES * strokeRate) / 3600;
       if (!rower.playing) rower.play();
     }
   }, [isRowing, strokeRate]);
@@ -134,8 +141,8 @@ export function RowingScene({
       // Load all assets in parallel
       const [farBgTex, midBgTex, gameplayTex, fgTex, rowerSheetTex] =
         await Promise.all([
-          Assets.load(ASSET_BASE + "far-background.png"),
-          Assets.load(ASSET_BASE + "mid-background.png"),
+          Assets.load(ASSET_BASE + "far-background-2.png"),
+          Assets.load(ASSET_BASE + "mid-background-1.png"),
           Assets.load(ASSET_BASE + "gameplay.png"),
           Assets.load(ASSET_BASE + "foreground.png"),
           Assets.load(ASSET_BASE + "rower-spritesheet.png"),
@@ -189,7 +196,7 @@ export function RowingScene({
         gameplay.tilePosition.y = -Math.round(H * GAMEPLAY_SHORELINE_FRAC);
 
         // Foreground: cattail silhouette — align content bottom with scene bottom
-        const fgScale = (H * 0.5) / fgTex.height;
+        const fgScale = (H * 1) / fgTex.height;
         const fgH = Math.round(fgTex.height * fgScale);
         const fg = new TilingSprite({
           texture: fgTex,
@@ -215,17 +222,13 @@ export function RowingScene({
       const SPRITE_Y_OFFSET = 1;
       const effectiveFh = fh - SPRITE_Y_OFFSET;
 
-      const frames: Texture[] = [];
-      for (let row = 0; row < NUM_ROWS; row++) {
-        for (let col = 0; col < NUM_COLS; col++) {
-          frames.push(
-            new Texture({
-              source: rowerSheetTex.source,
-              frame: new Rectangle(col * fw + 25, row * fh + SPRITE_Y_OFFSET, fw, effectiveFh),
-            }),
-          );
-        }
-      }
+      const colTextures = Array.from({ length: NUM_COLS }, (_, col) =>
+        new Texture({
+          source: rowerSheetTex.source,
+          frame: new Rectangle(col * fw, ANIM_ROW * fh + SPRITE_Y_OFFSET, fw, effectiveFh),
+        }),
+      );
+      const frames = FRAME_SEQUENCE.map((col) => colTextures[col]);
 
       function makeRower(W: number, hullY: number): AnimatedSprite {
         const rowerScale = (H * 0.30) / effectiveFh;
@@ -251,7 +254,6 @@ export function RowingScene({
 
       // Apply current animation state (might have changed while assets loaded)
       if (isRowingRef.current && strokeRateRef.current) {
-        rower.animationSpeed = (NUM_FRAMES * strokeRateRef.current) / 3600;
         rower.play();
       }
 
@@ -262,9 +264,12 @@ export function RowingScene({
       app!.ticker.add((ticker) => {
         const dt = ticker.deltaTime;
 
-        // Smooth lerp toward target speed (~2 s to reach target at 60fps)
+        // Smooth lerp toward target scroll speed and animation speed (~2s)
         const diff = targetSpeedRef.current - currentSpeedRef.current;
         currentSpeedRef.current += diff * Math.min(dt * 0.033, 1);
+
+        const animDiff = targetAnimSpeedRef.current - rower.animationSpeed;
+        rower.animationSpeed += animDiff * Math.min(dt * 0.033, 1);
 
         const spd = currentSpeedRef.current;
 
@@ -276,10 +281,10 @@ export function RowingScene({
         // Skip scroll writes when effectively stationary
         if (Math.abs(spd) < 0.01) return;
 
-        farBg.tilePosition.x -= spd * 0.03 * dt;
-        midBg.tilePosition.x -= spd * 0.12 * dt;
-        gameplay.tilePosition.x -= spd * 0.30 * dt;
-        fg.tilePosition.x -= spd * 0.60 * dt;
+        farBg.tilePosition.x -= spd * SCROLL_SCALE * 0.01 * dt;
+        midBg.tilePosition.x -= spd * SCROLL_SCALE * 0.10 * dt;
+        gameplay.tilePosition.x -= spd * SCROLL_SCALE * 0.20 * dt;
+        fg.tilePosition.x -= spd * SCROLL_SCALE * 0.60 * dt;
       });
 
       // Pause rendering when the tab is hidden to save battery on mobile
