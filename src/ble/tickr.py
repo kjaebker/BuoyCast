@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import json
 import logging
 from collections import deque
 from datetime import datetime, timezone
-from typing import Callable, Protocol
+from pathlib import Path
+from typing import IO, Callable, Protocol
 
 from pydantic import ValidationError
 
@@ -59,7 +61,8 @@ def parse_hr_measurement(data: bytes | bytearray) -> tuple[int, list[int]]:
         data: raw characteristic bytes
 
     Returns:
-        (heart_rate_bpm, rr_intervals_ms)
+        (heart_rate_bpm, rr_intervals_ms) — out-of-range RR intervals are
+        silently skipped rather than rejecting the entire notification.
 
     Raises:
         ValueError: if data is too short or BPM is out of range
@@ -84,16 +87,19 @@ def parse_hr_measurement(data: bytes | bytearray) -> tuple[int, list[int]]:
     if bpm < 20 or bpm > 250:
         raise ValueError(f"Heart rate out of range: {bpm} BPM")
 
-    # Parse RR intervals
+    # Parse RR intervals — skip out-of-range values instead of failing the
+    # entire notification.  A single bad RR interval shouldn't discard a
+    # valid BPM reading.
     rr_intervals_ms: list[int] = []
     if rr_present:
         while offset + 1 < len(data):
             rr_raw = int.from_bytes(data[offset : offset + 2], byteorder="little")
             # Convert from 1/1024 seconds to milliseconds
             rr_ms = int(round(rr_raw * 1000 / 1024))
-            if rr_ms < 200 or rr_ms > 2000:
-                raise ValueError(f"RR interval out of range: {rr_ms} ms")
-            rr_intervals_ms.append(rr_ms)
+            if 200 <= rr_ms <= 2000:
+                rr_intervals_ms.append(rr_ms)
+            else:
+                logger.debug("Skipping out-of-range RR interval: %dms (raw=%d)", rr_ms, rr_raw)
             offset += 2
 
     return bpm, rr_intervals_ms
@@ -147,6 +153,8 @@ class TickrReader:
         self._consecutive_divergence = 0
         # Rate-of-change limiting: prevent implausible BPM jumps.
         self._last_emitted_bpm: int | None = None
+        # Debug capture: write raw BLE data + processing decisions to JSONL file.
+        self._debug_file: IO[str] | None = None
 
     @property
     def connected(self) -> bool:
@@ -175,6 +183,8 @@ class TickrReader:
         if not self._settings.device_mac:
             logger.warning("No TICKR MAC address configured")
             return
+        if self._settings.debug_capture:
+            self._open_debug_file()
         self._running = True
         self._task = asyncio.create_task(self._run_loop())
 
@@ -189,6 +199,7 @@ class TickrReader:
                 pass
             self._task = None
         await self._disconnect()
+        self._close_debug_file()
 
     async def _run_loop(self) -> None:
         """Main loop: connect → listen → reconnect with exponential backoff."""
@@ -272,22 +283,44 @@ class TickrReader:
             await self._bus.emit(EventType.TICKR_DISCONNECTED)
             logger.info("TICKR disconnected")
 
-    def _add_rr_intervals(self, rr_intervals: list[int]) -> None:
+    def _open_debug_file(self) -> None:
+        """Open a timestamped JSONL file for raw HR data capture."""
+        capture_dir = Path(self._settings.debug_capture_dir)
+        capture_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        path = capture_dir / f"hr_capture_{ts}.jsonl"
+        self._debug_file = open(path, "a")  # noqa: SIM115
+        logger.info("HR debug capture → %s", path)
+
+    def _close_debug_file(self) -> None:
+        """Close the debug capture file if open."""
+        if self._debug_file is not None:
+            self._debug_file.close()
+            self._debug_file = None
+
+    def _write_debug(self, record: dict) -> None:
+        """Append a JSON record to the debug capture file."""
+        if self._debug_file is None:
+            return
+        try:
+            self._debug_file.write(json.dumps(record) + "\n")
+            self._debug_file.flush()
+        except Exception:
+            pass  # never let debug I/O crash the reader
+
+    def _add_rr_intervals(self, rr_intervals: list[int]) -> list[str]:
         """Add RR intervals to the buffer, rejecting physiological outliers.
 
-        Spurious R-wave detections from poor skin contact produce short RR
-        intervals (e.g. 200-300ms) that would wildly distort a mean. We reject
-        any incoming interval that deviates more than 30% from the current
-        buffer median. On an empty buffer every value is accepted so the reader
-        locks on quickly after connect.
+        Returns a list of debug notes describing what was accepted/rejected.
         """
+        notes: list[str] = []
         if not self._rr_buffer:
-            # Seed with physiologically plausible intervals only (≤ 200 BPM).
-            # Short intervals from double-counted beats (poor initial contact,
-            # TICKR firmware quirk) would corrupt the median baseline and then
-            # cause all subsequent valid intervals to be rejected as outliers.
-            self._rr_buffer.extend(rr for rr in rr_intervals if rr >= 300)
-            return
+            accepted = [rr for rr in rr_intervals if rr >= 300]
+            rejected = [rr for rr in rr_intervals if rr < 300]
+            self._rr_buffer.extend(accepted)
+            if rejected:
+                notes.append(f"seed_rejected={rejected}")
+            return notes
 
         sorted_buf = sorted(self._rr_buffer)
         mid = len(sorted_buf) // 2
@@ -301,55 +334,70 @@ class TickrReader:
                 self._rr_buffer.append(rr)
             else:
                 logger.debug("Rejected RR outlier %dms (median %dms)", rr, median)
+                notes.append(f"outlier_rejected={rr}ms(median={median})")
+        return notes
 
     async def _on_hr_notification(self, characteristic: object, data: bytearray) -> None:
         """Handle incoming HR measurement notification."""
+        now = datetime.now(tz=timezone.utc)
+        debug: dict = {"ts": now.isoformat(), "raw_hex": data.hex()}
+
         try:
-            bpm, rr_intervals = parse_hr_measurement(data)
+            raw_bpm, rr_intervals = parse_hr_measurement(data)
         except ValueError as e:
             logger.debug("Skipping invalid HR data: %s", e)
+            debug["error"] = str(e)
+            self._write_debug(debug)
             return
+
+        debug["raw_bpm"] = raw_bpm
+        debug["rr_intervals_ms"] = rr_intervals
+        debug["bpm_field_doubled"] = self._settings.bpm_field_doubled
 
         # Determine the "field BPM" — the BPM value reported directly by the
         # TICKR hardware, corrected for the known doubling firmware bug.
-        field_bpm = bpm // 2 if self._settings.bpm_field_doubled else bpm
+        field_bpm = raw_bpm // 2 if self._settings.bpm_field_doubled else raw_bpm
+        debug["field_bpm"] = field_bpm
 
-        # Prefer RR-derived BPM — it reflects actual beat-to-beat timing and is
-        # immune to the TICKR BPM-doubling firmware bug.  Outliers are filtered
-        # first so that a single spurious detection doesn't corrupt the average.
+        # Add RR intervals to the buffer (outlier-filtered).
+        rr_notes = self._add_rr_intervals(rr_intervals)
+        debug["rr_buffer"] = list(self._rr_buffer)
+        debug["rr_notes"] = rr_notes
+
+        bpm = field_bpm  # default: use field BPM
+        debug["bpm_source"] = "field"
+
+        # Prefer RR-derived BPM when the buffer has data.
         #
-        # Cross-check: if the RR-derived BPM is HIGHER than the field BPM by
-        # more than 40% for several consecutive readings, the RR buffer is
-        # likely corrupted (locked onto spurious short intervals from poor skin
-        # contact). Reset the buffer and fall back to the field BPM.
-        #
-        # The check is one-directional: only when RR-derived > field.  When the
-        # field is higher than RR-derived, that's the TICKR BPM-doubling firmware
-        # bug — the RR data is correct and the field is wrong, so we keep using
-        # RR-derived BPM in that case.
-        self._add_rr_intervals(rr_intervals)
+        # Cross-check: compare RR-derived BPM against the RAW BPM (not the
+        # halved field_bpm).  When bpm_field_doubled is True, the raw BPM is
+        # ~2x the real HR, so comparing against it avoids false positives where
+        # the correct RR-derived value looks "too high" vs the halved field.
         if self._rr_buffer:
             rr_bpm = round(60000 / (sum(self._rr_buffer) / len(self._rr_buffer)))
-            if field_bpm > 0 and rr_bpm > field_bpm * 1.40:
+            debug["rr_derived_bpm"] = rr_bpm
+
+            if raw_bpm > 0 and rr_bpm > raw_bpm * 1.40:
                 self._consecutive_divergence += 1
+                debug["divergence_count"] = self._consecutive_divergence
                 if self._consecutive_divergence >= 3:
                     logger.warning(
-                        "RR buffer appears corrupted (RR-derived %d >> field %d), resetting",
-                        rr_bpm, field_bpm, self._consecutive_divergence,
+                        "RR buffer appears corrupted (RR-derived %d >> raw %d) after %d divergences, resetting",
+                        rr_bpm, raw_bpm, self._consecutive_divergence,
                     )
                     self._rr_buffer.clear()
                     self._consecutive_divergence = 0
+                    debug["action"] = "rr_buffer_reset"
                 bpm = field_bpm
+                debug["bpm_source"] = "field(divergence)"
             else:
                 self._consecutive_divergence = 0
                 bpm = rr_bpm
-        elif self._settings.bpm_field_doubled:
-            bpm = bpm // 2
+                debug["bpm_source"] = "rr_derived"
 
         # Rate-of-change limiting: physiologically, HR cannot jump more than
-        # ~15 BPM between consecutive 1-second notifications.  This catches
-        # sudden firmware glitches (e.g. BPM doubling mid-workout) that both
-        # the field and RR data might report simultaneously.
+        # ~15 BPM between consecutive 1-second notifications.
+        pre_limit_bpm = bpm
         if self._last_emitted_bpm is not None:
             max_delta = 15
             delta = bpm - self._last_emitted_bpm
@@ -359,11 +407,16 @@ class TickrReader:
                     "Rate-limited HR change: %d -> %d (clamped delta %d)",
                     self._last_emitted_bpm, bpm, delta,
                 )
+        if bpm != pre_limit_bpm:
+            debug["rate_limited_from"] = pre_limit_bpm
+        debug["emitted_bpm"] = bpm
         self._last_emitted_bpm = bpm
+
+        self._write_debug(debug)
 
         try:
             metrics = RowingMetrics(
-                timestamp=datetime.now(tz=timezone.utc),
+                timestamp=now,
                 heart_rate_bpm=bpm,
                 rr_intervals_ms=rr_intervals if rr_intervals else None,
             )
