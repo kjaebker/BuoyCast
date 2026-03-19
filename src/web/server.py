@@ -434,8 +434,10 @@ async def _ws_broadcast_loop(app_state: AppState) -> None:
     idle_q = bus.subscribe(EventType.IDLE_WARNING)
     s4_conn_q = bus.subscribe(EventType.S4_CONNECTED)
     s4_disc_q = bus.subscribe(EventType.S4_DISCONNECTED)
+    tickr_conn_q = bus.subscribe(EventType.TICKR_CONNECTED)
+    tickr_disc_q = bus.subscribe(EventType.TICKR_DISCONNECTED)
 
-    queues = [metrics_q, started_q, paused_q, resumed_q, ended_q, idle_q, s4_conn_q, s4_disc_q]
+    queues = [metrics_q, started_q, paused_q, resumed_q, ended_q, idle_q, s4_conn_q, s4_disc_q, tickr_conn_q, tickr_disc_q]
 
     while True:
         # Wait for any event from any queue
@@ -458,11 +460,15 @@ async def _ws_broadcast_loop(app_state: AppState) -> None:
             ):
                 app_state.last_metrics_ts = event.data.timestamp
 
-            # Track S4 connection state
+            # Track device connection state
             if event.type == EventType.S4_CONNECTED:
                 app_state.s4_connected = True
             elif event.type == EventType.S4_DISCONNECTED:
                 app_state.s4_connected = False
+            elif event.type == EventType.TICKR_CONNECTED:
+                app_state.tickr_connected = True
+            elif event.type == EventType.TICKR_DISCONNECTED:
+                app_state.tickr_connected = False
 
             # Build WSMessage
             if event.type == EventType.MERGED_METRICS and isinstance(
@@ -478,6 +484,15 @@ async def _ws_broadcast_loop(app_state: AppState) -> None:
                     type="s4_status",
                     data={
                         "connected": event.type == EventType.S4_CONNECTED,
+                        "paused": reader.paused if reader else False,
+                    },
+                )
+            elif event.type in (EventType.TICKR_CONNECTED, EventType.TICKR_DISCONNECTED):
+                reader = app_state.tickr_reader
+                msg = WSMessage(
+                    type="tickr_status",
+                    data={
+                        "connected": event.type == EventType.TICKR_CONNECTED,
                         "paused": reader.paused if reader else False,
                     },
                 )
