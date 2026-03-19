@@ -334,7 +334,7 @@ class TickrReader:
                 self._consecutive_divergence += 1
                 if self._consecutive_divergence >= 3:
                     logger.warning(
-                        "RR buffer appears corrupted (RR-derived %d >> field %d), resetting",
+                        "RR buffer appears corrupted (RR-derived %d >> field %d) after %d divergences, resetting",
                         rr_bpm, field_bpm, self._consecutive_divergence,
                     )
                     self._rr_buffer.clear()
