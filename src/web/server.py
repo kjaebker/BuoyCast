@@ -58,50 +58,47 @@ async def check_git_updates() -> dict:
         }
 
     try:
-        # Run git commands as the pi user to avoid permission issues
-        # (the service runs as pi, but .git may have mixed ownership)
-        git_cmd = ["sudo", "-u", "pi", "git", "-C", str(git_dir)]
+        # Base git command: skip safe.directory ownership check (the repo
+        # may be owned by a different user than the service process, e.g.
+        # root-owned .git in /home/pi/BuoyCast).
+        git_cmd = ["git", "-C", str(git_dir), "-c", "safe.directory=*"]
 
-        # Fetch latest from origin (non-blocking via asyncio)
-        proc = await asyncio.create_subprocess_exec(
-            *git_cmd, "fetch", "origin", "main", "--quiet",
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-        )
-        _, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
-        if proc.returncode != 0:
+        async def _git(*args: str) -> tuple[int, str, str]:
+            """Run a git command asynchronously, returning (rc, stdout, stderr)."""
+            proc = await asyncio.create_subprocess_exec(
+                *git_cmd, *args,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=30)
+            return (
+                proc.returncode or 0,
+                stdout_b.decode().strip(),
+                stderr_b.decode().strip(),
+            )
+
+        # Fetch latest from origin
+        rc, _, err = await _git("fetch", "origin", "main", "--quiet")
+        if rc != 0:
             return {
                 "current_sha": None,
                 "remote_sha": None,
                 "update_available": False,
                 "commits_behind": 0,
                 "latest_commit_message": None,
-                "error": f"git fetch failed: {stderr.decode().strip()}",
+                "error": f"git fetch failed: {err}",
             }
 
         # Get local and remote HEAD
-        local = subprocess.run(
-            [*git_cmd, "rev-parse", "HEAD"],
-            capture_output=True, text=True, timeout=5,
-        ).stdout.strip()
-
-        remote = subprocess.run(
-            [*git_cmd, "rev-parse", "origin/main"],
-            capture_output=True, text=True, timeout=5,
-        ).stdout.strip()
+        _, local, _ = await _git("rev-parse", "HEAD")
+        _, remote, _ = await _git("rev-parse", "origin/main")
 
         # Count commits behind
-        behind_output = subprocess.run(
-            [*git_cmd, "rev-list", "--count", f"HEAD..origin/main"],
-            capture_output=True, text=True, timeout=5,
-        ).stdout.strip()
+        _, behind_output, _ = await _git("rev-list", "--count", "HEAD..origin/main")
         commits_behind = int(behind_output) if behind_output.isdigit() else 0
 
         # Get latest remote commit message
-        latest_msg = subprocess.run(
-            [*git_cmd, "log", "origin/main", "-1", "--format=%s"],
-            capture_output=True, text=True, timeout=5,
-        ).stdout.strip()
+        _, latest_msg, _ = await _git("log", "origin/main", "-1", "--format=%s")
 
         return {
             "current_sha": local[:8],
