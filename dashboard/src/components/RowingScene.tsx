@@ -56,7 +56,11 @@ function paceToSpeed(pace: number | null): number {
 }
 
 function sceneHeight(): number {
-  return window.innerWidth >= 768 ? 240 : 200;
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  if (w >= 768 && h <= 820) return 160; // iPad landscape
+  if (w >= 768) return 240; // iPad portrait
+  return 200; // iPhone
 }
 
 export function RowingScene({

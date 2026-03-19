@@ -17,6 +17,14 @@
   }
 }
 
+/* iPad landscape / any short-height tablet: cap the scene so it doesn't
+   dominate the viewport and push metrics off-screen. */
+@media (min-width: 768px) and (max-height: 820px) {
+  .rowing-scene {
+    height: 160px;
+  }
+}
+
 .rowing-scene canvas {
   display: block;
   position: absolute;
