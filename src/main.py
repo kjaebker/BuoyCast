@@ -9,8 +9,10 @@ Starts four top-level coroutines:
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import logging
+import sys
 from pathlib import Path
 
 import uvicorn
@@ -29,7 +31,7 @@ from src.workout.state import WorkoutStateMachine
 logger = logging.getLogger(__name__)
 
 
-async def run(settings: Settings) -> None:
+async def run(settings: Settings, simulate: bool = False) -> None:
     """Wire all components and run the application."""
     # Ensure data directories exist
     Path(settings.storage.db_path).parent.mkdir(parents=True, exist_ok=True)
@@ -75,28 +77,45 @@ async def run(settings: Settings) -> None:
 
     # Start S4 reader
     s4_reader = None
-    try:
-        import serial
+    if simulate:
+        from src.simulator import SimulatedS4Reader
 
-        from src.s4.reader import AsyncSerial, S4Reader
-
-        _raw_serial = serial.Serial()
-        _raw_serial.port = settings.s4.port
-        _raw_serial.baudrate = settings.s4.baud_rate
-        _raw_serial.timeout = 0.1  # S4 responds in ~6ms; 100ms timeout avoids orphaned threads
-        serial_port = AsyncSerial(_raw_serial)
-        s4_reader = S4Reader(serial_port, event_bus, settings.s4)
+        s4_reader = SimulatedS4Reader(event_bus)
         await s4_reader.start()
         components.append(s4_reader)
         app_state.s4_reader = s4_reader
-    except ImportError:
-        logger.warning("pyserial not available — S4 reader disabled")
-    except Exception as exc:
-        logger.warning("S4 reader init failed: %s", exc)
+        logger.info("S4 reader: simulation mode")
+    else:
+        try:
+            import serial
+
+            from src.s4.reader import AsyncSerial, S4Reader
+
+            _raw_serial = serial.Serial()
+            _raw_serial.port = settings.s4.port
+            _raw_serial.baudrate = settings.s4.baud_rate
+            _raw_serial.timeout = 0.1  # S4 responds in ~6ms; 100ms timeout avoids orphaned threads
+            serial_port = AsyncSerial(_raw_serial)
+            s4_reader = S4Reader(serial_port, event_bus, settings.s4)
+            await s4_reader.start()
+            components.append(s4_reader)
+            app_state.s4_reader = s4_reader
+        except ImportError:
+            logger.warning("pyserial not available — S4 reader disabled")
+        except Exception as exc:
+            logger.warning("S4 reader init failed: %s", exc)
 
     # Start TICKR reader
     tickr_reader = None
-    if settings.heart_rate.enabled and settings.heart_rate.device_mac:
+    if simulate:
+        from src.simulator import SimulatedHRReader
+
+        tickr_reader = SimulatedHRReader(event_bus)
+        await tickr_reader.start()
+        components.append(tickr_reader)
+        app_state.tickr_reader = tickr_reader
+        logger.info("HR reader: simulation mode")
+    elif settings.heart_rate.enabled and settings.heart_rate.device_mac:
         try:
             from bleak import BleakClient, BleakScanner
 
@@ -158,10 +177,22 @@ async def run(settings: Settings) -> None:
 
 def main() -> None:
     """CLI entry point."""
+    parser = argparse.ArgumentParser(description="BuoyCast rowing bridge")
+    parser.add_argument(
+        "--simulate",
+        action="store_true",
+        help="Replace real S4/TICKR hardware with simulated data sources (for local dev)",
+    )
+    args = parser.parse_args()
+
     config_path = Path("config.toml")
     if not config_path.exists():
-        logger.error("config.toml not found — copy config.toml.example and edit it")
-        sys.exit(1)
+        if args.simulate and Path("config.toml.example").exists():
+            config_path = Path("config.toml.example")
+            print("config.toml not found — using config.toml.example for simulation")
+        else:
+            logger.error("config.toml not found — copy config.toml.example and edit it")
+            sys.exit(1)
 
     settings = load_settings(config_path)
     configure_logging(
@@ -169,7 +200,7 @@ def main() -> None:
         log_dir=settings.logging.log_dir,
         json_logs=settings.logging.json_logs,
     )
-    asyncio.run(run(settings))
+    asyncio.run(run(settings, simulate=args.simulate))
 
 
 if __name__ == "__main__":

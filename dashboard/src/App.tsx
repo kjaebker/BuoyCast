@@ -1,4 +1,5 @@
-﻿import { useState } from "react";
+﻿import { useEffect, useState } from "react";
+import * as api from "@/lib/api";
 import { History, Waves } from "lucide-react";
 import { useWorkoutSocket } from "@/hooks/useWorkoutSocket";
 import { useWakeLock } from "@/hooks/useWakeLock";
@@ -8,6 +9,7 @@ import { WorkoutControls } from "@/components/WorkoutControls";
 import { CompletionScreen } from "@/components/CompletionScreen";
 import { WorkoutHistory } from "@/components/WorkoutHistory";
 import { RecoveryBanner } from "@/components/RecoveryBanner";
+import { RowingDetectedPrompt } from "@/components/RowingDetectedPrompt";
 import { SettingsScreen } from "@/components/SettingsScreen";
 import { Button } from "@/components/ui/button";
 
@@ -16,6 +18,19 @@ function App() {
   const [showHistory, setShowHistory] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [historyKey, setHistoryKey] = useState(0);
+  const [rowingPromptDismissed, setRowingPromptDismissed] = useState(false);
+
+  // Reset dismissal once the user stops rowing so the prompt can reappear
+  useEffect(() => {
+    if (!metrics?.stroke_rate) {
+      setRowingPromptDismissed(false);
+    }
+  }, [metrics?.stroke_rate]);
+
+  const showRowingPrompt =
+    workoutState === "IDLE" &&
+    !rowingPromptDismissed &&
+    (metrics?.stroke_rate ?? 0) > 0;
 
   useWakeLock(workoutState);
 
@@ -40,6 +55,17 @@ function App() {
         <div className="mx-4 mt-3 rounded-2xl border border-destructive/35 bg-destructive/12 px-4 py-3 text-center text-sm font-medium text-destructive-foreground shadow-[0_0_0_1px_color-mix(in_oklch,var(--color-destructive)_18%,transparent)]">
           Connection lost. Reconnecting to the rower...
         </div>
+      )}
+
+      {showRowingPrompt && (
+        <RowingDetectedPrompt
+          onStart={async () => {
+            setRowingPromptDismissed(true);
+            await api.resetWorkout().catch(() => {}); // no-op if not in SUMMARY
+            await api.startWorkout().catch(() => {});
+          }}
+          onDismiss={() => setRowingPromptDismissed(true)}
+        />
       )}
 
       {showSettings ? (

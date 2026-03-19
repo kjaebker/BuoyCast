@@ -66,6 +66,30 @@ Dev server: `npm run dev`
 Type-check: `npm run build` (runs tsc then vite)
 Build only: `npx vite build`
 
+### Running locally without hardware (simulation mode)
+
+Start the backend with simulated S4 + HR data (no WaterRower or TICKR required):
+```bash
+python -m src.main --simulate
+```
+
+No `config.toml` needed — `--simulate` falls back to `config.toml.example` automatically.
+
+In a second terminal, start the dashboard dev server:
+```bash
+cd dashboard && npm run dev
+```
+
+Open `http://localhost:5173` (Vite proxy forwards API calls to the backend on port 8000).
+
+The simulator generates a realistic ~12-minute workout:
+- **0–1 min** — warmup: stroke rate 18–20 SPM, HR 95→120 BPM
+- **1–10 min** — main effort: stroke rate ~22 SPM with undulation, HR 120→155 BPM
+- **10–12 min** — cooldown: stroke rate dropping, HR recovering
+- **12+ min** — light ongoing rowing (loops indefinitely until you stop the process)
+
+Both S4 and TICKR connect events are emitted at startup (~0.5 s delay), so the dashboard sees them as connected. All API control endpoints (`/api/s4/connect`, `/api/hr/connect`, etc.) work normally in simulation mode.
+
 ### What's in the flake
 - Python 3.12 + all dependencies from pyproject.toml
 - Node.js 22 + npm
