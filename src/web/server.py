@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json as _json
 import logging
 import subprocess
 import time
@@ -18,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.requests import Request
 
 from src.events import EventBus, EventType
-from src.models import RowingMetrics, WorkoutState, WSMessage
+from src.models import RowingMetrics, WorkoutState
 from src.web.routes.settings import router as settings_router
 from src.web.routes.strava import router as strava_router
 from src.web.routes.workouts import router as workouts_router
@@ -416,40 +417,51 @@ def create_app(
     return app
 
 
+def _json_dumps(obj: Any) -> str:
+    """Fast JSON serialization for WS messages — skips Pydantic overhead."""
+    return _json.dumps(obj, separators=(",", ":"))
+
+
 async def _ws_broadcast_loop(app_state: AppState) -> None:
-    """Subscribe to events and broadcast to all connected WebSocket clients."""
+    """Subscribe to events and broadcast to all connected WebSocket clients.
+
+    Uses a fan-in pattern: one lightweight forwarder task per source queue
+    pushes events into a single output queue, avoiding the previous approach
+    of creating/cancelling ~10 asyncio.Tasks per event (~50 tasks/sec).
+    """
     bus = app_state.event_bus
     if bus is None:
         return
 
     # Subscribe to merged metrics and all workout state events
-    metrics_q = bus.subscribe(EventType.MERGED_METRICS)
-    started_q = bus.subscribe(EventType.WORKOUT_STARTED)
-    paused_q = bus.subscribe(EventType.WORKOUT_PAUSED)
-    resumed_q = bus.subscribe(EventType.WORKOUT_RESUMED)
-    ended_q = bus.subscribe(EventType.WORKOUT_ENDED)
-    idle_q = bus.subscribe(EventType.IDLE_WARNING)
-    s4_conn_q = bus.subscribe(EventType.S4_CONNECTED)
-    s4_disc_q = bus.subscribe(EventType.S4_DISCONNECTED)
-    tickr_conn_q = bus.subscribe(EventType.TICKR_CONNECTED)
-    tickr_disc_q = bus.subscribe(EventType.TICKR_DISCONNECTED)
+    event_types = [
+        EventType.MERGED_METRICS,
+        EventType.WORKOUT_STARTED,
+        EventType.WORKOUT_PAUSED,
+        EventType.WORKOUT_RESUMED,
+        EventType.WORKOUT_ENDED,
+        EventType.IDLE_WARNING,
+        EventType.S4_CONNECTED,
+        EventType.S4_DISCONNECTED,
+        EventType.TICKR_CONNECTED,
+        EventType.TICKR_DISCONNECTED,
+    ]
 
-    queues = [metrics_q, started_q, paused_q, resumed_q, ended_q, idle_q, s4_conn_q, s4_disc_q, tickr_conn_q, tickr_disc_q]
+    source_queues = [bus.subscribe(et) for et in event_types]
+    fan_in: asyncio.Queue = asyncio.Queue()
 
-    while True:
-        # Wait for any event from any queue
-        done, _ = await asyncio.wait(
-            [asyncio.create_task(q.get()) for q in queues],
-            return_when=asyncio.FIRST_COMPLETED,
-        )
+    async def _forwarder(src: asyncio.Queue) -> None:
+        """Forward events from a source queue to the shared fan-in queue."""
+        while True:
+            event = await src.get()
+            await fan_in.put(event)
 
-        for task in done:
-            try:
-                event = task.result()
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                continue
+    # Start one forwarder per source — lightweight, long-lived tasks
+    forwarders = [asyncio.create_task(_forwarder(q)) for q in source_queues]
+
+    try:
+        while True:
+            event = await fan_in.get()
 
             # Update last metrics timestamp
             if event.type == EventType.MERGED_METRICS and isinstance(
@@ -467,40 +479,39 @@ async def _ws_broadcast_loop(app_state: AppState) -> None:
             elif event.type == EventType.TICKR_DISCONNECTED:
                 app_state.tickr_connected = False
 
-            # Build WSMessage
+            # Build JSON message directly — avoids Pydantic WSMessage overhead
             if event.type == EventType.MERGED_METRICS and isinstance(
                 event.data, RowingMetrics
             ):
-                msg = WSMessage(
-                    type="metrics_update",
-                    data=event.data.model_dump(mode="json"),
-                )
+                msg_json = _json_dumps({
+                    "type": "metrics_update",
+                    "data": event.data.model_dump(mode="json"),
+                })
             elif event.type in (EventType.S4_CONNECTED, EventType.S4_DISCONNECTED):
                 reader = app_state.s4_reader
-                msg = WSMessage(
-                    type="s4_status",
-                    data={
+                msg_json = _json_dumps({
+                    "type": "s4_status",
+                    "data": {
                         "connected": event.type == EventType.S4_CONNECTED,
                         "paused": reader.paused if reader else False,
                     },
-                )
+                })
             elif event.type in (EventType.TICKR_CONNECTED, EventType.TICKR_DISCONNECTED):
                 reader = app_state.tickr_reader
-                msg = WSMessage(
-                    type="tickr_status",
-                    data={
+                msg_json = _json_dumps({
+                    "type": "tickr_status",
+                    "data": {
                         "connected": event.type == EventType.TICKR_CONNECTED,
                         "paused": reader.paused if reader else False,
                     },
-                )
+                })
             else:
-                msg = WSMessage(
-                    type=event.type.value,
-                    data=event.data if isinstance(event.data, dict) else {},
-                )
+                msg_json = _json_dumps({
+                    "type": event.type.value,
+                    "data": event.data if isinstance(event.data, dict) else {},
+                })
 
             # Broadcast to all clients
-            msg_json = msg.model_dump_json()
             disconnected = set()
             for ws in app_state.ws_clients:
                 try:
@@ -508,7 +519,8 @@ async def _ws_broadcast_loop(app_state: AppState) -> None:
                 except Exception:
                     disconnected.add(ws)
             app_state.ws_clients -= disconnected
-
-        # Cancel remaining pending tasks
-        for task in _ if _ else set():
-            task.cancel()
+    finally:
+        for t in forwarders:
+            t.cancel()
+        for et, q in zip(event_types, source_queues):
+            bus.unsubscribe(et, q)
