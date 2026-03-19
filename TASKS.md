@@ -45,4 +45,4 @@ Add new tasks here as they arise.
 | E15 | Frontend: Move HR out of stats grid into stroke-rate-over-time chart (dual-axis HR+SR sparkline with current HR label, show only when connected, longer grace period before hiding) | done | 2026-03-19 |
 | E16 | Frontend: Fix rowing animation height on iPad landscape (too tall) | done | 2026-03-19 |
 | E17 | Frontend: Simplify stats grid — remove color differentiation, reorder to: pace, stroke rate, power, time, distance, calories | done | 2026-03-19 |
-| E18 | Backend: Fix workout state management — audit state machine transitions, resolve 409 Conflict errors when starting workouts after prior sessions | available | 2026-03-19 |
+| E18 | Backend: Fix workout state management — audit state machine transitions, resolve 409 Conflict errors when starting workouts after prior sessions | done | 2026-03-19 |
