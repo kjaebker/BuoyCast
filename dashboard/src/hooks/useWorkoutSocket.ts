@@ -55,6 +55,15 @@ export function useWorkoutSocket(url?: string): WorkoutSocketState {
       if (!mountedRef.current) return;
       setConnectionStatus("connected");
       backoffRef.current = INITIAL_BACKOFF_MS;
+      // Sync workout state from server on every (re)connect so a page reload
+      // or WebSocket drop doesn't leave the client stuck in a stale state.
+      fetch("/api/status")
+        .then((r) => r.json())
+        .then((s) => {
+          if (!mountedRef.current) return;
+          if (s.workout_state) setWorkoutState(s.workout_state as WorkoutState);
+        })
+        .catch(() => {});
     };
 
     ws.onmessage = (event) => {
