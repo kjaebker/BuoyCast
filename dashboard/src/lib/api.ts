@@ -59,6 +59,11 @@ export const endWorkout = () =>
 export const resetWorkout = () =>
   fetchJSON<{ state: string }>("/workout/reset", { method: "POST" });
 
+export const forceResetWorkout = () =>
+  fetchJSON<{ state: string; previous_state: string }>("/workout/force-reset", {
+    method: "POST",
+  });
+
 // --- Upload ---
 
 export const uploadWorkout = (id: string, includeHr?: boolean) =>

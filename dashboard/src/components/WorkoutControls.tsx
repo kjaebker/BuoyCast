@@ -35,8 +35,16 @@ export function WorkoutControls({ workoutState }: WorkoutControlsProps) {
     setLoading(true);
     try {
       await action();
-    } catch {
-      // API errors handled elsewhere
+    } catch (e) {
+      // If start failed with 409 (stuck state), force-reset and retry once
+      if (action === api.startWorkout && e instanceof Error && e.message.startsWith("409")) {
+        try {
+          await api.forceResetWorkout();
+          await api.startWorkout();
+        } catch {
+          // Give up — user will see the error state
+        }
+      }
     } finally {
       setLoading(false);
     }
