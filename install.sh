@@ -57,6 +57,7 @@ fi
 
 # Create data directories
 mkdir -p "$INSTALL_DIR/data/fit"
+mkdir -p "$INSTALL_DIR/logs"
 
 # ── Python virtual environment ───────────────────────────────────────
 info "Setting up Python virtual environment..."
