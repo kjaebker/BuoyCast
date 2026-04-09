@@ -31,7 +31,7 @@ CPUQuota=80%
 # Security hardening
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/opt/buoycast/data
+ReadWritePaths=/opt/buoycast/data /opt/buoycast/logs
 ProtectHome=true
 
 [Install]
