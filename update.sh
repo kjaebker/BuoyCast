@@ -62,21 +62,33 @@ if ! diff -q "$INSTALL_DIR/${SERVICE_NAME}.service" "$INSTALLED_SERVICE" &>/dev/
     systemctl daemon-reload
 fi
 
+# ── Stop service before pip to free RAM (Pi Zero 2W has 512 MB) ───────
+WAS_RUNNING=false
+if systemctl is-active --quiet "$SERVICE_NAME"; then
+    info "Stopping service to free memory for pip..."
+    systemctl stop "$SERVICE_NAME"
+    WAS_RUNNING=true
+fi
+
 # ── Update Python dependencies ────────────────────────────────────────
 info "Updating Python dependencies..."
 # Clean up any stale pip temp dirs (left behind by interrupted/root installs)
 find "$INSTALL_DIR/.venv/lib" -maxdepth 3 -name '~*' -type d -exec rm -rf {} + 2>/dev/null || true
-sudo -u "$SERVICE_USER" "$INSTALL_DIR/.venv/bin/pip" install -e "$INSTALL_DIR" -q
-# BLE libraries are not in pyproject.toml (Linux-only) — install explicitly
-sudo -u "$SERVICE_USER" "$INSTALL_DIR/.venv/bin/pip" install bleak bless dbus-python -q
+PIP="$INSTALL_DIR/.venv/bin/pip"
+# --no-cache-dir keeps pip's memory footprint smaller on constrained hardware.
+# Install one package at a time to avoid simultaneous resolver + download spikes.
+sudo -u "$SERVICE_USER" "$PIP" install --no-cache-dir -e "$INSTALL_DIR" -q
+sudo -u "$SERVICE_USER" "$PIP" install --no-cache-dir bleak -q
+sudo -u "$SERVICE_USER" "$PIP" install --no-cache-dir bless -q
+sudo -u "$SERVICE_USER" "$PIP" install --no-cache-dir dbus-python -q
 
 # ── Restart service ───────────────────────────────────────────────────
-info "Restarting service..."
-if systemctl is-active --quiet "$SERVICE_NAME"; then
-    systemctl restart "$SERVICE_NAME"
-    info "Service restarted"
+if $WAS_RUNNING; then
+    info "Restarting service..."
+    systemctl start "$SERVICE_NAME"
+    info "Service started"
 else
-    warn "Service is not running — start it with: sudo systemctl start $SERVICE_NAME"
+    warn "Service was not running before update — start it with: sudo systemctl start $SERVICE_NAME"
 fi
 
 info "Done — BuoyCast updated successfully"
