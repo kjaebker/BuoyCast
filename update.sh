@@ -49,6 +49,19 @@ else
     sudo bash ~/BuoyCast/install.sh"
 fi
 
+# ── Ensure runtime directories exist ─────────────────────────────────
+mkdir -p "$INSTALL_DIR/data/fit"
+mkdir -p "$INSTALL_DIR/logs"
+chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR/data" "$INSTALL_DIR/logs"
+
+# ── Update systemd service file if changed ────────────────────────────
+INSTALLED_SERVICE="/etc/systemd/system/${SERVICE_NAME}.service"
+if ! diff -q "$INSTALL_DIR/${SERVICE_NAME}.service" "$INSTALLED_SERVICE" &>/dev/null; then
+    info "Service file changed — updating and reloading systemd..."
+    cp "$INSTALL_DIR/${SERVICE_NAME}.service" "$INSTALLED_SERVICE"
+    systemctl daemon-reload
+fi
+
 # ── Update Python dependencies ────────────────────────────────────────
 info "Updating Python dependencies..."
 # Clean up any stale pip temp dirs (left behind by interrupted/root installs)
