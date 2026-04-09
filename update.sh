@@ -70,17 +70,36 @@ if systemctl is-active --quiet "$SERVICE_NAME"; then
     WAS_RUNNING=true
 fi
 
+# ── Temporary swap file so pip doesn't OOM on 512 MB Pi Zero 2W ───────
+# pip's bytecode compilation spikes well past available RAM without swap.
+SWAP_FILE="$INSTALL_DIR/data/.update_swap"
+SWAP_CREATED=false
+if ! swapon --show | grep -q .; then
+    info "No swap detected — creating temporary 256 MB swap for pip..."
+    dd if=/dev/zero of="$SWAP_FILE" bs=1M count=256 status=none
+    chmod 600 "$SWAP_FILE"
+    mkswap "$SWAP_FILE" -q
+    swapon "$SWAP_FILE"
+    SWAP_CREATED=true
+fi
+
 # ── Update Python dependencies ────────────────────────────────────────
 info "Updating Python dependencies..."
 # Clean up any stale pip temp dirs (left behind by interrupted/root installs)
 find "$INSTALL_DIR/.venv/lib" -maxdepth 3 -name '~*' -type d -exec rm -rf {} + 2>/dev/null || true
 PIP="$INSTALL_DIR/.venv/bin/pip"
-# --no-cache-dir keeps pip's memory footprint smaller on constrained hardware.
-# Install one package at a time to avoid simultaneous resolver + download spikes.
+# --no-cache-dir reduces pip's peak memory. Install one package at a time
+# to avoid simultaneous resolver + download memory spikes.
 sudo -u "$SERVICE_USER" "$PIP" install --no-cache-dir -e "$INSTALL_DIR" -q
 sudo -u "$SERVICE_USER" "$PIP" install --no-cache-dir bleak -q
 sudo -u "$SERVICE_USER" "$PIP" install --no-cache-dir bless -q
 sudo -u "$SERVICE_USER" "$PIP" install --no-cache-dir dbus-python -q
+
+# ── Remove temporary swap ─────────────────────────────────────────────
+if $SWAP_CREATED; then
+    swapoff "$SWAP_FILE"
+    rm -f "$SWAP_FILE"
+fi
 
 # ── Restart service ───────────────────────────────────────────────────
 if $WAS_RUNNING; then
