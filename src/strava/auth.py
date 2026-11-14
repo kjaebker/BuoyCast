@@ -196,7 +196,8 @@ class StravaAuth:
     async def _store_tokens(self, tokens: StravaTokens) -> None:
         """Upsert tokens into SQLite (single-row table)."""
         await self._db.execute(
-            """INSERT INTO strava_tokens (id, access_token, refresh_token, expires_at, athlete_id, athlete_name)
+            """INSERT INTO strava_tokens
+                (id, access_token, refresh_token, expires_at, athlete_id, athlete_name)
             VALUES (1, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 access_token = excluded.access_token,

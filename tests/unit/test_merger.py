@@ -1,20 +1,19 @@
 """Tests for the data merger."""
 
 import asyncio
-from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from src.events import Event, EventBus, EventType
-from src.merger import DataMerger, STALE_THRESHOLD_S
+from src.events import EventBus, EventType
+from src.merger import STALE_THRESHOLD_S, DataMerger
 from src.models import RowingMetrics
 
 
 def _s4_metrics(**kwargs: object) -> RowingMetrics:
     """Create S4-style metrics (has rowing fields, no HR)."""
     defaults = {
-        "timestamp": datetime.now(tz=timezone.utc),
+        "timestamp": datetime.now(tz=UTC),
         "stroke_rate": 28.0,
         "stroke_count": 100,
         "distance_m": 500.0,
@@ -30,7 +29,7 @@ def _s4_metrics(**kwargs: object) -> RowingMetrics:
 def _hr_metrics(bpm: int = 140, rr: list[int] | None = None) -> RowingMetrics:
     """Create TICKR-style metrics (has HR, no rowing fields)."""
     return RowingMetrics(
-        timestamp=datetime.now(tz=timezone.utc),
+        timestamp=datetime.now(tz=UTC),
         heart_rate_bpm=bpm,
         rr_intervals_ms=rr,
     )
@@ -108,7 +107,7 @@ class TestMergerStaleHR:
         await asyncio.sleep(0.05)
 
         # Simulate time passing beyond stale threshold
-        old_time = datetime.now(tz=timezone.utc) - timedelta(seconds=STALE_THRESHOLD_S + 1)
+        old_time = datetime.now(tz=UTC) - timedelta(seconds=STALE_THRESHOLD_S + 1)
         merger._hr_timestamp = old_time
 
         # Send S4 metrics

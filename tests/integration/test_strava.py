@@ -2,20 +2,17 @@
 
 from __future__ import annotations
 
-import json
 import time
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
 
-from src.models import StrokeRecord, StravaUploadStatus, WorkoutRecord
+from src.models import StravaUploadStatus, StrokeRecord, WorkoutRecord
 from src.storage.db import Database
 from src.storage.queries import get_workout, insert_strokes, insert_workout
 from src.strava.auth import StravaAuth, StravaTokens
 from src.strava.upload import upload_workout
-
 
 # --- Fixtures ---
 
@@ -29,7 +26,7 @@ async def db():
 
 
 def _sample_workout(workout_id: str = "w001") -> WorkoutRecord:
-    started = datetime(2026, 3, 9, 10, 0, 0, tzinfo=timezone.utc)
+    started = datetime(2026, 3, 9, 10, 0, 0, tzinfo=UTC)
     return WorkoutRecord(
         id=workout_id,
         started_at=started,
@@ -45,7 +42,7 @@ def _sample_workout(workout_id: str = "w001") -> WorkoutRecord:
 
 
 def _sample_strokes(workout_id: str = "w001") -> list[StrokeRecord]:
-    started = datetime(2026, 3, 9, 10, 0, 0, tzinfo=timezone.utc)
+    started = datetime(2026, 3, 9, 10, 0, 0, tzinfo=UTC)
     return [
         StrokeRecord(
             workout_id=workout_id,
@@ -77,7 +74,11 @@ class MockStravaTransport(httpx.AsyncBaseTransport):
             "expires_at": int(time.time()) + 3600,
         }
         self._upload_response = {"id": 99001, "status": "Your activity is still being processed."}
-        self._upload_status_response = {"id": 99001, "activity_id": 77001, "status": "Your activity is ready."}
+        self._upload_status_response = {
+            "id": 99001,
+            "activity_id": 77001,
+            "status": "Your activity is ready.",
+        }
         self._upload_error: str | None = None
         self._deauth_called = False
         self._fail_upload = False
@@ -111,14 +112,24 @@ class MockStravaTransport(httpx.AsyncBaseTransport):
         if "/uploads/" in url and request.method == "GET":
             self._poll_count += 1
             if self._upload_error:
-                return httpx.Response(200, json={
-                    "id": 99001, "activity_id": None, "error": self._upload_error,
-                })
+                return httpx.Response(
+                    200,
+                    json={
+                        "id": 99001,
+                        "activity_id": None,
+                        "error": self._upload_error,
+                    },
+                )
             if self._poll_count >= self._polls_before_ready:
                 return httpx.Response(200, json=self._upload_status_response)
-            return httpx.Response(200, json={
-                "id": 99001, "activity_id": None, "status": "processing",
-            })
+            return httpx.Response(
+                200,
+                json={
+                    "id": 99001,
+                    "activity_id": None,
+                    "status": "processing",
+                },
+            )
 
         return httpx.Response(404, text="Not found")
 
@@ -294,14 +305,10 @@ class TestUpload:
         await insert_workout(db, _sample_workout())
         await insert_strokes(db, _sample_strokes())
 
-        await upload_workout(
-            "w001", db, auth, fit_dir=str(tmp_path), http_client=http_client
-        )
+        await upload_workout("w001", db, auth, fit_dir=str(tmp_path), http_client=http_client)
 
         # Find the upload request
-        upload_reqs = [
-            r for r in mock_transport.requests if str(r.url).endswith("/uploads")
-        ]
+        upload_reqs = [r for r in mock_transport.requests if str(r.url).endswith("/uploads")]
         assert len(upload_reqs) == 1
 
     async def test_upload_sets_uploading_status(
@@ -315,25 +322,19 @@ class TestUpload:
         # Mock transport with slow poll to check intermediate state
         mock_transport._polls_before_ready = 2
 
-        await upload_workout(
-            "w001", db, auth, fit_dir=str(tmp_path), http_client=http_client
-        )
+        await upload_workout("w001", db, auth, fit_dir=str(tmp_path), http_client=http_client)
 
         # Final state should be UPLOADED
         workout = await get_workout(db, "w001")
         assert workout.strava_upload_status == StravaUploadStatus.UPLOADED
 
-    async def test_upload_polls_status(
-        self, db, auth, http_client, mock_transport, tmp_path
-    ):
+    async def test_upload_polls_status(self, db, auth, http_client, mock_transport, tmp_path):
         await auth.exchange_code("test_code")
         await insert_workout(db, _sample_workout())
         await insert_strokes(db, _sample_strokes())
         mock_transport._polls_before_ready = 3
 
-        await upload_workout(
-            "w001", db, auth, fit_dir=str(tmp_path), http_client=http_client
-        )
+        await upload_workout("w001", db, auth, fit_dir=str(tmp_path), http_client=http_client)
 
         assert mock_transport._poll_count >= 3
 
@@ -354,9 +355,7 @@ class TestUpload:
         assert workout.strava_upload_status == StravaUploadStatus.FAILED
         assert workout.strava_error is not None
 
-    async def test_upload_error_from_strava(
-        self, db, auth, http_client, mock_transport, tmp_path
-    ):
+    async def test_upload_error_from_strava(self, db, auth, http_client, mock_transport, tmp_path):
         await auth.exchange_code("test_code")
         await insert_workout(db, _sample_workout())
         await insert_strokes(db, _sample_strokes())
@@ -383,9 +382,7 @@ class TestUpload:
         workout = await get_workout(db, "w001")
         assert workout.strava_upload_status == StravaUploadStatus.FAILED
 
-    async def test_retry_after_failure(
-        self, db, auth, http_client, mock_transport, tmp_path
-    ):
+    async def test_retry_after_failure(self, db, auth, http_client, mock_transport, tmp_path):
         """Retry should re-attempt from FAILED state."""
         await auth.exchange_code("test_code")
         await insert_workout(db, _sample_workout())
@@ -393,9 +390,7 @@ class TestUpload:
 
         # First attempt fails
         mock_transport._fail_upload = True
-        await upload_workout(
-            "w001", db, auth, fit_dir=str(tmp_path), http_client=http_client
-        )
+        await upload_workout("w001", db, auth, fit_dir=str(tmp_path), http_client=http_client)
         workout = await get_workout(db, "w001")
         assert workout.strava_upload_status == StravaUploadStatus.FAILED
 

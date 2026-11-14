@@ -1,10 +1,9 @@
 """Unit tests for FIT file generation."""
 
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-import pytest
 from garmin_fit_sdk import Decoder, Stream
 
 from src.models import StrokeRecord, WorkoutRecord
@@ -16,7 +15,7 @@ def _workout(
     max_hr: int | None = 160,
     strokes: int = 10,
 ) -> WorkoutRecord:
-    started = datetime(2026, 3, 9, 10, 0, 0, tzinfo=timezone.utc)
+    started = datetime(2026, 3, 9, 10, 0, 0, tzinfo=UTC)
     return WorkoutRecord(
         id="test123",
         started_at=started,
@@ -34,7 +33,7 @@ def _workout(
 
 
 def _strokes(count: int = 10, include_hr: bool = True) -> list[StrokeRecord]:
-    started = datetime(2026, 3, 9, 10, 0, 0, tzinfo=timezone.utc)
+    started = datetime(2026, 3, 9, 10, 0, 0, tzinfo=UTC)
     records = []
     for i in range(count):
         records.append(

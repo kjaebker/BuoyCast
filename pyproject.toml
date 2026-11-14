@@ -56,3 +56,5 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "UP"]
+# str+Enum -> StrEnum changes str()/format() output; keep current behaviour.
+ignore = ["UP042"]

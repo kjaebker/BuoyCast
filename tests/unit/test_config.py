@@ -70,25 +70,21 @@ class TestSettings:
 
 class TestLoadSettings:
     def _write_toml(self, content: str) -> Path:
-        f = tempfile.NamedTemporaryFile(
-            mode="w", suffix=".toml", delete=False
-        )
+        f = tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False)
         f.write(content)
         f.close()
         return Path(f.name)
 
     def test_load_from_toml(self, tmp_path):
         toml = tmp_path / "test.toml"
-        toml.write_text(
-            '[server]\nport = 9090\n\n[s4]\nbaud_rate = 9600\n'
-        )
+        toml.write_text("[server]\nport = 9090\n\n[s4]\nbaud_rate = 9600\n")
         s = load_settings(toml)
         assert s.server.port == 9090
         assert s.s4.baud_rate == 9600
 
     def test_toml_overrides_preserve_other_defaults(self, tmp_path):
         toml = tmp_path / "test.toml"
-        toml.write_text('[server]\nport = 3000\n')
+        toml.write_text("[server]\nport = 3000\n")
         s = load_settings(toml)
         assert s.server.port == 3000
         # Other sections should keep defaults
@@ -109,18 +105,14 @@ class TestLoadSettings:
 
     def test_strava_config(self, tmp_path):
         toml = tmp_path / "test.toml"
-        toml.write_text(
-            '[strava]\nclient_id = "12345"\nclient_secret = "secret"\n'
-        )
+        toml.write_text('[strava]\nclient_id = "12345"\nclient_secret = "secret"\n')
         s = load_settings(toml)
         assert s.strava.client_id == "12345"
         assert s.strava.client_secret == "secret"
 
     def test_storage_config(self, tmp_path):
         toml = tmp_path / "test.toml"
-        toml.write_text(
-            '[storage]\ndb_path = "/tmp/test.db"\nfit_dir = "/tmp/fit"\n'
-        )
+        toml.write_text('[storage]\ndb_path = "/tmp/test.db"\nfit_dir = "/tmp/fit"\n')
         s = load_settings(toml)
         assert s.storage.db_path == "/tmp/test.db"
         assert s.storage.fit_dir == "/tmp/fit"

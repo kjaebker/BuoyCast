@@ -11,9 +11,10 @@ import inspect
 import json
 import logging
 from collections import deque
-from datetime import datetime, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import IO, Callable, Protocol
+from typing import IO, Protocol
 
 from pydantic import ValidationError
 
@@ -325,9 +326,7 @@ class TickrReader:
         sorted_buf = sorted(self._rr_buffer)
         mid = len(sorted_buf) // 2
         median = (
-            sorted_buf[mid]
-            if len(sorted_buf) % 2
-            else (sorted_buf[mid - 1] + sorted_buf[mid]) // 2
+            sorted_buf[mid] if len(sorted_buf) % 2 else (sorted_buf[mid - 1] + sorted_buf[mid]) // 2
         )
         for rr in rr_intervals:
             if abs(rr - median) / median <= 0.30:
@@ -339,7 +338,7 @@ class TickrReader:
 
     async def _on_hr_notification(self, characteristic: object, data: bytearray) -> None:
         """Handle incoming HR measurement notification."""
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         debug: dict = {"ts": now.isoformat(), "raw_hex": data.hex()}
 
         try:
@@ -382,8 +381,11 @@ class TickrReader:
                 debug["divergence_count"] = self._consecutive_divergence
                 if self._consecutive_divergence >= 3:
                     logger.warning(
-                        "RR buffer appears corrupted (RR-derived %d >> raw %d) after %d divergences, resetting",
-                        rr_bpm, raw_bpm, self._consecutive_divergence,
+                        "RR buffer appears corrupted (RR-derived %d >> raw %d) "
+                        "after %d divergences, resetting",
+                        rr_bpm,
+                        raw_bpm,
+                        self._consecutive_divergence,
                     )
                     self._rr_buffer.clear()
                     self._consecutive_divergence = 0
@@ -405,7 +407,9 @@ class TickrReader:
                 bpm = self._last_emitted_bpm + (max_delta if delta > 0 else -max_delta)
                 logger.debug(
                     "Rate-limited HR change: %d -> %d (clamped delta %d)",
-                    self._last_emitted_bpm, bpm, delta,
+                    self._last_emitted_bpm,
+                    bpm,
+                    delta,
                 )
         if bpm != pre_limit_bpm:
             debug["rate_limited_from"] = pre_limit_bpm

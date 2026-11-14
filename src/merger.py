@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from src.events import EventBus, EventType
 from src.models import RowingMetrics
@@ -91,7 +91,7 @@ class DataMerger:
         """Merge latest S4 data with latest HR data."""
         s4 = self._latest_s4
         if s4 is None:
-            return RowingMetrics(timestamp=datetime.now(tz=timezone.utc))
+            return RowingMetrics(timestamp=datetime.now(tz=UTC))
 
         # Start with S4 data
         hr_bpm: int | None = None
@@ -99,13 +99,13 @@ class DataMerger:
 
         # Overlay HR if fresh
         if self._latest_hr is not None and self._hr_timestamp is not None:
-            age = (datetime.now(tz=timezone.utc) - self._hr_timestamp).total_seconds()
+            age = (datetime.now(tz=UTC) - self._hr_timestamp).total_seconds()
             if age <= STALE_THRESHOLD_S:
                 hr_bpm = self._latest_hr.heart_rate_bpm
                 rr_intervals = self._latest_hr.rr_intervals_ms
 
         return RowingMetrics(
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             stroke_rate=s4.stroke_rate,
             stroke_count=s4.stroke_count,
             distance_m=s4.distance_m,

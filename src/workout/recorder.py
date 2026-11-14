@@ -11,7 +11,7 @@ import asyncio
 import logging
 import uuid
 from collections import deque
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from src.events import EventBus, EventType
 from src.models import RowingMetrics, StrokeRecord, WorkoutRecord, WorkoutState
@@ -149,7 +149,7 @@ class StrokeRecorder:
         """Listen for workout start events."""
         while self._running:
             try:
-                event = await self._started_queue.get()
+                await self._started_queue.get()
             except asyncio.CancelledError:
                 raise
             await self._on_workout_started()
@@ -158,7 +158,7 @@ class StrokeRecorder:
         """Listen for workout end events."""
         while self._running:
             try:
-                event = await self._ended_queue.get()
+                await self._ended_queue.get()
             except asyncio.CancelledError:
                 raise
             await self._on_workout_ended()
@@ -186,7 +186,7 @@ class StrokeRecorder:
         self._last_calories = None
 
         # Insert placeholder so strokes can reference this workout_id
-        started_at = self._sm.started_at or datetime.now(tz=timezone.utc)
+        started_at = self._sm.started_at or datetime.now(tz=UTC)
         placeholder = WorkoutRecord(
             id=self._workout_id,
             started_at=started_at,
@@ -236,13 +236,17 @@ class StrokeRecorder:
         total_distance = max((s.distance_m for s in strokes), default=0.0)
 
         started_at = self._sm.started_at
-        ended_at = self._sm.ended_at or datetime.now(tz=timezone.utc)
+        ended_at = self._sm.ended_at or datetime.now(tz=UTC)
         elapsed = int((ended_at - started_at).total_seconds())
 
         rates = [s.stroke_rate for s in strokes if s.stroke_rate > 0]
         avg_stroke_rate = sum(rates) / len(rates) if rates else None
 
-        paces = [s.pace_s_per_500m for s in strokes if s.pace_s_per_500m is not None and s.pace_s_per_500m > 0]
+        paces = [
+            s.pace_s_per_500m
+            for s in strokes
+            if s.pace_s_per_500m is not None and s.pace_s_per_500m > 0
+        ]
         avg_pace = sum(paces) / len(paces) if paces else None
 
         powers = [s.power_watts for s in strokes if s.power_watts is not None and s.power_watts > 0]

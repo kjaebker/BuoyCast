@@ -1,6 +1,6 @@
 """Workout state machine with explicit transition guards and event publishing."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from src.events import EventBus, EventType
 from src.models import WorkoutState
@@ -80,10 +80,10 @@ class WorkoutStateMachine:
 
         # Record timestamps
         if action == "start":
-            self._started_at = datetime.now(tz=timezone.utc)
+            self._started_at = datetime.now(tz=UTC)
             self._ended_at = None
         elif action == "end":
-            self._ended_at = datetime.now(tz=timezone.utc)
+            self._ended_at = datetime.now(tz=UTC)
         elif action == "reset":
             self._started_at = None
             self._ended_at = None

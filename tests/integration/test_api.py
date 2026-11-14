@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -12,16 +11,14 @@ from httpx import ASGITransport, AsyncClient
 from src.events import EventBus, EventType
 from src.models import (
     RowingMetrics,
-    StrokeRecord,
     StravaUploadStatus,
+    StrokeRecord,
     WorkoutRecord,
-    WorkoutState,
 )
 from src.storage.db import Database
 from src.storage.queries import get_workout, insert_strokes, insert_workout
 from src.web.server import create_app
 from src.workout.state import WorkoutStateMachine
-
 
 # --- Fixtures ---
 
@@ -60,7 +57,7 @@ def _sample_workout(
     workout_id: str = "w001",
     ended: bool = True,
 ) -> WorkoutRecord:
-    started = datetime(2026, 3, 9, 10, 0, 0, tzinfo=timezone.utc)
+    started = datetime(2026, 3, 9, 10, 0, 0, tzinfo=UTC)
     return WorkoutRecord(
         id=workout_id,
         started_at=started,
@@ -78,7 +75,7 @@ def _sample_workout(
 
 
 def _sample_strokes(workout_id: str = "w001", count: int = 5) -> list[StrokeRecord]:
-    started = datetime(2026, 3, 9, 10, 0, 0, tzinfo=timezone.utc)
+    started = datetime(2026, 3, 9, 10, 0, 0, tzinfo=UTC)
     return [
         StrokeRecord(
             workout_id=workout_id,
@@ -304,7 +301,7 @@ class TestWebSocket:
             with tc.websocket_connect("/ws/live") as ws:
                 # Emit a merged metrics event
                 metrics = RowingMetrics(
-                    timestamp=datetime.now(tz=timezone.utc),
+                    timestamp=datetime.now(tz=UTC),
                     stroke_rate=28.0,
                     distance_m=100.0,
                 )
@@ -470,7 +467,9 @@ class TestSpaStaticServing:
             assert (await c.get("/app.js")).text == "console.log(1)"
             assert (await c.get("/some/route")).text == "<html>spa</html>"
 
-    @pytest.mark.parametrize("path", ["/..%2Fconfig.toml", "/..%2F..%2Fconfig.toml", "/%2E%2E/config.toml"])
+    @pytest.mark.parametrize(
+        "path", ["/..%2Fconfig.toml", "/..%2F..%2Fconfig.toml", "/%2E%2E/config.toml"]
+    )
     async def test_rejects_path_traversal(self, dist_app, path):
         transport = ASGITransport(app=dist_app)
         async with AsyncClient(transport=transport, base_url="http://t") as c:

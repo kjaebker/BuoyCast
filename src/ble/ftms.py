@@ -45,9 +45,7 @@ _MACHINE_STATUS_STOPPED = bytearray([0x04])
 # Bit 10: Heart Rate
 # Bit 12: Elapsed Time
 # Bit 14: Power
-_FTMS_FEATURE_FLAGS = (
-    (1 << 1) | (1 << 2) | (1 << 5) | (1 << 9) | (1 << 10) | (1 << 12) | (1 << 14)
-)
+_FTMS_FEATURE_FLAGS = (1 << 1) | (1 << 2) | (1 << 5) | (1 << 9) | (1 << 10) | (1 << 12) | (1 << 14)
 _FITNESS_MACHINE_FEATURE_VALUE = struct.pack("<II", _FTMS_FEATURE_FLAGS, 0)
 
 # --- Rower Data flags (uint16, little-endian) ---
@@ -139,8 +137,8 @@ def pack_rower_data(metrics: RowingMetrics) -> bytes:
         flags |= FLAG_EXPENDED_ENERGY
         total_kcal = min(metrics.calories, 0xFFFE)  # 0xFFFF reserved for "n/a"
         data.extend(struct.pack("<H", total_kcal))  # Total Energy
-        data.extend(struct.pack("<H", 0xFFFF))       # Energy Per Hour (n/a)
-        data.extend(struct.pack("<B", 0xFF))         # Energy Per Minute (n/a)
+        data.extend(struct.pack("<H", 0xFFFF))  # Energy Per Hour (n/a)
+        data.extend(struct.pack("<B", 0xFF))  # Energy Per Minute (n/a)
 
     # Heart Rate (uint8, BPM — conditional)
     if metrics.heart_rate_bpm is not None:
@@ -297,9 +295,7 @@ class FTMSBroadcaster:
                 GATTCharacteristicProperties,
             )
         except ImportError as exc:
-            raise RuntimeError(
-                "bless not installed — run: pip install bless"
-            ) from exc
+            raise RuntimeError("bless not installed — run: pip install bless") from exc
 
         _BLE_SETUP_ATTEMPTS = 4
         _BLE_RETRY_DELAY_S = 3.0
@@ -436,12 +432,12 @@ class FTMSBroadcaster:
         """
         try:
             try:
-                from dbus_next.aio import MessageBus  # type: ignore[import]
                 from dbus_next import BusType  # type: ignore[import]
+                from dbus_next.aio import MessageBus  # type: ignore[import]
                 from dbus_next.service import ServiceInterface, method  # type: ignore[import]
             except ImportError:
-                from dbus_fast.aio import MessageBus  # type: ignore[import]
                 from dbus_fast import BusType  # type: ignore[import]
+                from dbus_fast.aio import MessageBus  # type: ignore[import]
                 from dbus_fast.service import ServiceInterface, method  # type: ignore[import]
         except ImportError:
             logger.warning(
@@ -451,6 +447,7 @@ class FTMSBroadcaster:
             return
 
         try:
+
             class _PairingAgent(ServiceInterface):
                 """BlueZ Agent1 implementation — auto-accepts everything."""
 
@@ -462,31 +459,31 @@ class FTMSBroadcaster:
                     pass
 
                 @method()  # type: ignore[misc]
-                def RequestPinCode(self, device: "o") -> "s":  # type: ignore[name-defined]  # noqa: N802, F821
+                def RequestPinCode(self, device: o) -> s:  # type: ignore[name-defined]  # noqa: N802, F821
                     return "0000"
 
                 @method()  # type: ignore[misc]
-                def DisplayPinCode(self, device: "o", pincode: "s") -> None:  # type: ignore[name-defined]  # noqa: N802, F821
+                def DisplayPinCode(self, device: o, pincode: s) -> None:  # type: ignore[name-defined]  # noqa: N802, F821
                     pass
 
                 @method()  # type: ignore[misc]
-                def RequestPasskey(self, device: "o") -> "u":  # type: ignore[name-defined]  # noqa: N802, F821
+                def RequestPasskey(self, device: o) -> u:  # type: ignore[name-defined]  # noqa: N802, F821
                     return 0
 
                 @method()  # type: ignore[misc]
-                def DisplayPasskey(self, device: "o", passkey: "u", entered: "q") -> None:  # type: ignore[name-defined]  # noqa: N802, F821
+                def DisplayPasskey(self, device: o, passkey: u, entered: q) -> None:  # type: ignore[name-defined]  # noqa: N802, F821
                     pass
 
                 @method()  # type: ignore[misc]
-                def RequestConfirmation(self, device: "o", passkey: "u") -> None:  # type: ignore[name-defined]  # noqa: N802, F821
+                def RequestConfirmation(self, device: o, passkey: u) -> None:  # type: ignore[name-defined]  # noqa: N802, F821
                     pass  # auto-accept
 
                 @method()  # type: ignore[misc]
-                def RequestAuthorization(self, device: "o") -> None:  # type: ignore[name-defined]  # noqa: N802, F821
+                def RequestAuthorization(self, device: o) -> None:  # type: ignore[name-defined]  # noqa: N802, F821
                     pass  # auto-accept
 
                 @method()  # type: ignore[misc]
-                def AuthorizeService(self, device: "o", uuid: "s") -> None:  # type: ignore[name-defined]  # noqa: N802, F821
+                def AuthorizeService(self, device: o, uuid: s) -> None:  # type: ignore[name-defined]  # noqa: N802, F821
                     pass  # auto-accept
 
                 @method()  # type: ignore[misc]

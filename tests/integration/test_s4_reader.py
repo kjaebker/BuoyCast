@@ -7,13 +7,6 @@ import pytest
 from src.config import S4Settings
 from src.events import EventBus, EventType
 from src.models import RowingMetrics
-from src.s4.protocol import (
-    ADDR_CALORIES,
-    ADDR_DISTANCE_M,
-    ADDR_STROKE_RATE,
-    LINE_ENDING,
-    RESP_WR,
-)
 from src.s4.reader import S4Reader
 from tests.conftest import MockSerial
 

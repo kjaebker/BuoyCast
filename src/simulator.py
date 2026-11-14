@@ -14,7 +14,7 @@ import asyncio
 import logging
 import math
 import random
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from src.events import EventBus, EventType
 from src.models import RowingMetrics
@@ -134,7 +134,7 @@ class SimulatedS4Reader:
         calories = int(t * 0.067)
 
         return RowingMetrics(
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             stroke_rate=round(stroke_rate, 1),
             stroke_count=self._stroke_count,
             distance_m=round(self._distance_m, 1),
@@ -248,7 +248,7 @@ class SimulatedHRReader:
 
         # HR curve: warmup → build → steady state → cooldown
         if t < 60:
-            hr = 95.0 + (t / 60.0) * 25.0          # 95 → 120 BPM
+            hr = 95.0 + (t / 60.0) * 25.0  # 95 → 120 BPM
         elif t < 300:
             hr = 120.0 + ((t - 60) / 240.0) * 35.0  # 120 → 155 BPM
         elif t < 600:
@@ -264,13 +264,10 @@ class SimulatedHRReader:
 
         # Generate physiologically plausible RR intervals
         rr_base_ms = round(60000 / bpm)
-        rr_intervals = [
-            max(300, min(1500, rr_base_ms + random.randint(-25, 25)))
-            for _ in range(2)
-        ]
+        rr_intervals = [max(300, min(1500, rr_base_ms + random.randint(-25, 25))) for _ in range(2)]
 
         return RowingMetrics(
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             heart_rate_bpm=bpm,
             rr_intervals_ms=rr_intervals,
         )

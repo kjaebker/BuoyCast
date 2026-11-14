@@ -26,9 +26,9 @@ LINE_ENDING = b"\r\n"
 # ---------------------------------------------------------------------------
 # Host → S4 commands (ASCII strings, sent with LINE_ENDING appended)
 # ---------------------------------------------------------------------------
-CMD_USB = "USB"    # Initiate USB communication; S4 responds with _WR_
+CMD_USB = "USB"  # Initiate USB communication; S4 responds with _WR_
 CMD_RESET = "RESET"  # Clear distance/time/stroke counters
-CMD_IV = "IV?"     # Request firmware/model version; S4 responds with IV{model}{ver}
+CMD_IV = "IV?"  # Request firmware/model version; S4 responds with IV{model}{ver}
 CMD_EXIT = "EXIT"  # Release USB mode so S4 can enter sleep
 
 # Memory read commands — format: "IR{size}{addr3hex}"
@@ -38,12 +38,12 @@ CMD_IR_PREFIX = "IR"
 # ---------------------------------------------------------------------------
 # S4 → Host responses / spontaneous messages
 # ---------------------------------------------------------------------------
-RESP_WR = "_WR_"    # S4 acknowledge of USB command
-RESP_IV = "IV"      # Firmware version prefix
-RESP_SS = "SS"      # Stroke Start — pushed when a new stroke begins
-RESP_SE = "SE"      # Stroke End — pushed at the end of a stroke
+RESP_WR = "_WR_"  # S4 acknowledge of USB command
+RESP_IV = "IV"  # Firmware version prefix
+RESP_SS = "SS"  # Stroke Start — pushed when a new stroke begins
+RESP_SE = "SE"  # Stroke End — pushed at the end of a stroke
 RESP_PING = "PING"  # Keepalive, sent ~1/s when idle
-RESP_OK = "OK"      # General acknowledgement
+RESP_OK = "OK"  # General acknowledgement
 RESP_ERROR = "ERROR"  # Error response
 
 # Individual Data response prefixes
@@ -193,7 +193,7 @@ def parse_response(line: str) -> tuple[str, str | None, int | None]:
     for size, prefix in RESPONSE_PREFIX.items():
         if line.startswith(prefix):
             expected_hex = VALUE_HEX_DIGITS[size]
-            payload = line[len(prefix):]
+            payload = line[len(prefix) :]
             # Payload format: {addr3hex}{valueNhex}
             expected_len = 3 + expected_hex
             if len(payload) != expected_len:

@@ -4,10 +4,10 @@ import asyncio
 
 import pytest
 
+from src.ble.tickr import TickrReader
 from src.config import HeartRateSettings
 from src.events import EventBus, EventType
 from src.models import RowingMetrics
-from src.ble.tickr import TickrReader
 from tests.conftest import MockBLEClient
 
 # Fast timing kwargs for all test readers
@@ -80,9 +80,7 @@ class TestTickrReaderConnection:
 
         await reader.stop()
 
-    async def test_disabled_skips_start(
-        self, mock_ble: MockBLEClient, event_bus: EventBus
-    ):
+    async def test_disabled_skips_start(self, mock_ble: MockBLEClient, event_bus: EventBus):
         settings = HeartRateSettings(enabled=False, device_mac="AA:BB:CC:DD:EE:FF")
         reader = TickrReader(mock_ble, event_bus, settings, **FAST_TIMING)
 
@@ -95,9 +93,7 @@ class TestTickrReaderConnection:
 
         await reader.stop()
 
-    async def test_no_mac_skips_start(
-        self, mock_ble: MockBLEClient, event_bus: EventBus
-    ):
+    async def test_no_mac_skips_start(self, mock_ble: MockBLEClient, event_bus: EventBus):
         settings = HeartRateSettings(enabled=True, device_mac="")
         reader = TickrReader(mock_ble, event_bus, settings, **FAST_TIMING)
 

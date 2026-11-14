@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from collections import deque
 from typing import Any
 
 import pytest
@@ -19,9 +18,8 @@ from src.s4.protocol import (
     ADDR_STROKE_COUNT,
     ADDR_STROKE_RATE,
     LINE_ENDING,
-    POLL_ADDRESSES,
-    RESPONSE_PREFIX,
     RESP_WR,
+    RESPONSE_PREFIX,
     VALUE_HEX_DIGITS,
     MemoryLocation,
 )

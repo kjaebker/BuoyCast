@@ -1,9 +1,7 @@
 """Tests for event bus."""
 
 import asyncio
-from datetime import datetime, timezone
-
-import pytest
+from datetime import UTC, datetime
 
 from src.events import Event, EventBus, EventType
 
@@ -42,9 +40,9 @@ class TestEvent:
         assert e.data["stroke_rate"] == 28.0
 
     def test_timestamp_auto_set(self):
-        before = datetime.now(tz=timezone.utc)
+        before = datetime.now(tz=UTC)
         e = Event(type=EventType.S4_CONNECTED)
-        after = datetime.now(tz=timezone.utc)
+        after = datetime.now(tz=UTC)
         assert before <= e.timestamp <= after
 
 
@@ -98,7 +96,7 @@ class TestEventBus:
         assert bus.subscriber_count(EventType.WORKOUT_ENDED) == 0
         q1 = bus.subscribe(EventType.WORKOUT_ENDED)
         assert bus.subscriber_count(EventType.WORKOUT_ENDED) == 1
-        q2 = bus.subscribe(EventType.WORKOUT_ENDED)
+        bus.subscribe(EventType.WORKOUT_ENDED)
         assert bus.subscriber_count(EventType.WORKOUT_ENDED) == 2
         bus.unsubscribe(EventType.WORKOUT_ENDED, q1)
         assert bus.subscriber_count(EventType.WORKOUT_ENDED) == 1

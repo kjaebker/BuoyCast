@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import deque
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Protocol
 
 from src.config import S4Settings
@@ -310,10 +310,14 @@ class S4Reader:
                         continue
                     else:
                         # Stale response for a different address — discard
-                        logger.debug("S4 stale response: expected %s got %s", addr.address, addr_hex)
+                        logger.debug(
+                            "S4 stale response: expected %s got %s", addr.address, addr_hex
+                        )
 
             if first_cycle:
-                logger.info("S4 first poll cycle complete: %d/%d responses", hits, len(POLL_ADDRESSES))
+                logger.info(
+                    "S4 first poll cycle complete: %d/%d responses", hits, len(POLL_ADDRESSES)
+                )
                 first_cycle = False
 
             metrics = self._build_metrics()
@@ -341,11 +345,15 @@ class S4Reader:
         hours = bcd_decode(self._values.get(ADDR_ELAPSED_HOURS.address, 0))
 
         return RowingMetrics(
-            timestamp=datetime.now(tz=timezone.utc),
-            stroke_rate=stroke_rate_raw_to_spm(stroke_rate_raw) if stroke_rate_raw is not None else None,
+            timestamp=datetime.now(tz=UTC),
+            stroke_rate=stroke_rate_raw_to_spm(stroke_rate_raw)
+            if stroke_rate_raw is not None
+            else None,
             stroke_count=stroke_count,
             distance_m=float(distance_m) if distance_m is not None else None,
-            pace_s_per_500m=avg_speed_to_pace(avg_speed_cmps) if avg_speed_cmps is not None else None,
+            pace_s_per_500m=avg_speed_to_pace(avg_speed_cmps)
+            if avg_speed_cmps is not None
+            else None,
             power_watts=power,
             calories=int(calories / 1000) if calories is not None else None,
             elapsed_seconds=elapsed_time_to_seconds(hours, minutes, seconds),

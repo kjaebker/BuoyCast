@@ -2,13 +2,8 @@
 
 from __future__ import annotations
 
-import asyncio
-
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
-
-from src.storage.queries import get_workout
-from src.strava.upload import upload_workout as do_upload
 
 router = APIRouter()
 
@@ -24,9 +19,7 @@ async def strava_auth(request: Request):
     state = _get_state(request)
     auth = state.strava_auth
     if auth is None:
-        return JSONResponse(
-            status_code=503, content={"detail": "Strava not configured"}
-        )
+        return JSONResponse(status_code=503, content={"detail": "Strava not configured"})
     url = auth.build_auth_url()
     return {"auth_url": url}
 
@@ -37,9 +30,7 @@ async def strava_callback(request: Request, code: str):
     state = _get_state(request)
     auth = state.strava_auth
     if auth is None:
-        return JSONResponse(
-            status_code=503, content={"detail": "Strava not configured"}
-        )
+        return JSONResponse(status_code=503, content={"detail": "Strava not configured"})
     tokens = await auth.exchange_code(code)
     return {
         "connected": True,
@@ -64,8 +55,6 @@ async def strava_disconnect(request: Request):
     state = _get_state(request)
     auth = state.strava_auth
     if auth is None:
-        return JSONResponse(
-            status_code=503, content={"detail": "Strava not configured"}
-        )
+        return JSONResponse(status_code=503, content={"detail": "Strava not configured"})
     await auth.revoke()
     return {"connected": False}

@@ -25,23 +25,22 @@ from __future__ import annotations
 
 import asyncio
 import statistics
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
+from src.ble.tickr import TickrReader
 from src.config import S4Settings
 from src.events import EventBus, EventType
 from src.merger import DataMerger
 from src.models import RowingMetrics
-from tests.conftest import MockBLEClient, MockSerial
-
 from src.s4.reader import S4Reader
-from src.ble.tickr import TickrReader
-
+from tests.conftest import MockBLEClient, MockSerial
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 async def _probe_loop(duration_s: float, samples: list[float]) -> None:
     """Yield continuously and record each yield latency in milliseconds."""
@@ -70,6 +69,7 @@ async def _drain(queue: asyncio.Queue, duration_s: float) -> int:
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def fast_serial() -> MockSerial:
     ms = MockSerial()
@@ -88,6 +88,7 @@ def fast_ble() -> MockBLEClient:
 # ---------------------------------------------------------------------------
 # Test
 # ---------------------------------------------------------------------------
+
 
 class TestEventLoopLag:
     async def test_no_blocking_calls_under_load(
@@ -193,7 +194,7 @@ class TestEventLoopLag:
                 await bus.emit(
                     EventType.MERGED_METRICS,
                     data=RowingMetrics(
-                        timestamp=datetime.now(tz=timezone.utc),
+                        timestamp=datetime.now(tz=UTC),
                         stroke_rate=28.0,
                         distance_m=float(count),
                     ),
@@ -209,6 +210,4 @@ class TestEventLoopLag:
 
         assert len(lag_samples) > 50
         p95 = statistics.quantiles(lag_samples, n=20)[18]
-        assert p95 < 10.0, (
-            f"Event bus p95 lag {p95:.1f}ms — event bus itself is causing contention"
-        )
+        assert p95 < 10.0, f"Event bus p95 lag {p95:.1f}ms — event bus itself is causing contention"

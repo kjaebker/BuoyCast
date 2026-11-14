@@ -1,11 +1,11 @@
 """Integration tests for the storage layer against in-memory SQLite."""
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from src.models import StrokeRecord, StravaUploadStatus, WorkoutRecord
+from src.models import StravaUploadStatus, StrokeRecord, WorkoutRecord
 from src.storage.db import Database
 from src.storage.queries import (
     delete_workout,
@@ -34,7 +34,7 @@ def _make_workout(
     ended_at: datetime | None = None,
     **kwargs,
 ) -> WorkoutRecord:
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     return WorkoutRecord(
         id=id,
         started_at=started_at or now - timedelta(minutes=30),
@@ -48,9 +48,7 @@ def _make_workout(
         avg_heart_rate=kwargs.get("avg_heart_rate", 145),
         max_heart_rate=kwargs.get("max_heart_rate", 170),
         calories=kwargs.get("calories", 300),
-        strava_upload_status=kwargs.get(
-            "strava_upload_status", StravaUploadStatus.PENDING
-        ),
+        strava_upload_status=kwargs.get("strava_upload_status", StravaUploadStatus.PENDING),
     )
 
 
@@ -63,7 +61,7 @@ def _make_stroke(
 ) -> StrokeRecord:
     return StrokeRecord(
         workout_id=workout_id,
-        ts=datetime.now(tz=timezone.utc) + timedelta(seconds=offset_s),
+        ts=datetime.now(tz=UTC) + timedelta(seconds=offset_s),
         distance_m=distance_m,
         stroke_rate=stroke_rate,
         power_watts=150.0,
@@ -90,7 +88,7 @@ class TestWorkoutRoundTrip:
         assert result is None
 
     async def test_timestamps_preserved(self, db: Database):
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         w = _make_workout(started_at=now - timedelta(hours=1), ended_at=now)
         await insert_workout(db, w)
         fetched = await get_workout(db, "w-001")
@@ -102,7 +100,7 @@ class TestWorkoutRoundTrip:
 
 class TestListWorkouts:
     async def test_list_order(self, db: Database):
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         for i in range(5):
             w = _make_workout(
                 id=f"w-{i:03d}",
@@ -118,7 +116,7 @@ class TestListWorkouts:
         assert results[-1].id == "w-000"
 
     async def test_pagination(self, db: Database):
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         for i in range(10):
             w = _make_workout(
                 id=f"w-{i:03d}",
@@ -141,9 +139,7 @@ class TestListWorkouts:
 class TestUpdateWorkout:
     async def test_update_strava_status(self, db: Database):
         await insert_workout(db, _make_workout())
-        await update_workout(
-            db, "w-001", strava_upload_status=StravaUploadStatus.UPLOADED
-        )
+        await update_workout(db, "w-001", strava_upload_status=StravaUploadStatus.UPLOADED)
         fetched = await get_workout(db, "w-001")
         assert fetched is not None
         assert fetched.strava_upload_status == StravaUploadStatus.UPLOADED
@@ -261,7 +257,7 @@ class TestIncompleteWorkout:
             """INSERT INTO workouts (id, started_at, ended_at, total_distance_m,
                total_strokes, elapsed_seconds)
                VALUES (?, ?, '', 0, 0, 0)""",
-            ("w-incomplete", datetime.now(tz=timezone.utc).isoformat()),
+            ("w-incomplete", datetime.now(tz=UTC).isoformat()),
         )
         result = await get_incomplete_workout(db)
         assert result is not None
@@ -279,9 +275,7 @@ class TestConcurrentWrites:
 
         async def insert_batch(start: int):
             strokes = [
-                _make_stroke(
-                    workout_id="w-concurrent", offset_s=start + i, distance_m=float(i)
-                )
+                _make_stroke(workout_id="w-concurrent", offset_s=start + i, distance_m=float(i))
                 for i in range(50)
             ]
             await insert_strokes(db, strokes)

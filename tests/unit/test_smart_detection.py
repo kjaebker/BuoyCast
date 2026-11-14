@@ -1,6 +1,6 @@
 """Unit tests for SmartDetection — idle auto-pause, rowing auto-resume, idle warning."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
@@ -14,7 +14,7 @@ from src.workout.state import WorkoutStateMachine
 def _metrics(stroke_rate: float | None = None) -> RowingMetrics:
     """Create a minimal RowingMetrics for testing."""
     return RowingMetrics(
-        timestamp=datetime.now(tz=timezone.utc),
+        timestamp=datetime.now(tz=UTC),
         stroke_rate=stroke_rate,
     )
 
@@ -258,5 +258,6 @@ async def test_detection_via_event_bus(event_bus, sm, detection):
 async def _yield_loop() -> None:
     """Yield control to let async tasks process."""
     import asyncio
+
     await asyncio.sleep(0)
     await asyncio.sleep(0)

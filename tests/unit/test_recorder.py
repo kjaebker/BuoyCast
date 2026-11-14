@@ -1,12 +1,12 @@
 """Unit tests for StrokeRecorder — ACTIVE-only recording, flush, summary stats."""
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
 from src.events import EventBus, EventType
-from src.models import RowingMetrics, WorkoutState
+from src.models import RowingMetrics
 from src.storage.db import Database
 from src.storage.queries import get_strokes, get_workout
 from src.workout.recorder import StrokeRecorder
@@ -49,7 +49,7 @@ def _metrics(
     hr: int | None = None,
 ) -> RowingMetrics:
     return RowingMetrics(
-        timestamp=datetime.now(tz=timezone.utc),
+        timestamp=datetime.now(tz=UTC),
         stroke_rate=stroke_rate,
         distance_m=distance_m,
         pace_s_per_500m=pace,
@@ -181,12 +181,26 @@ async def test_summary_stats(event_bus, sm, recorder, db):
         workout_id = recorder.workout_id
 
         # Record strokes with known values
-        await _emit_and_yield(event_bus, _metrics(
-            stroke_rate=26.0, distance_m=50.0, pace=130.0, power=140.0, hr=140,
-        ))
-        await _emit_and_yield(event_bus, _metrics(
-            stroke_rate=30.0, distance_m=100.0, pace=110.0, power=160.0, hr=160,
-        ))
+        await _emit_and_yield(
+            event_bus,
+            _metrics(
+                stroke_rate=26.0,
+                distance_m=50.0,
+                pace=130.0,
+                power=140.0,
+                hr=140,
+            ),
+        )
+        await _emit_and_yield(
+            event_bus,
+            _metrics(
+                stroke_rate=30.0,
+                distance_m=100.0,
+                pace=110.0,
+                power=160.0,
+                hr=160,
+            ),
+        )
 
         await _end_workout(sm)
 

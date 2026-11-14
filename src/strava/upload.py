@@ -67,9 +67,7 @@ async def upload_workout(
             return False
 
         # Set uploading status
-        await update_workout(
-            db, workout_id, strava_upload_status=StravaUploadStatus.UPLOADING
-        )
+        await update_workout(db, workout_id, strava_upload_status=StravaUploadStatus.UPLOADING)
 
         # Get valid token
         tokens = await auth.get_valid_token()
@@ -81,7 +79,9 @@ async def upload_workout(
         fit_path = workout.fit_file_path
         if fit_path is None or not Path(fit_path).exists():
             strokes = await get_strokes(db, workout_id)
-            fit_path = str(generate_fit(workout, strokes, output_dir=fit_dir, include_hr=include_hr))
+            fit_path = str(
+                generate_fit(workout, strokes, output_dir=fit_dir, include_hr=include_hr)
+            )
             await update_workout(db, workout_id, fit_file_path=fit_path)
 
         # Upload
@@ -93,9 +93,7 @@ async def upload_workout(
             return False
 
         # Poll for completion
-        activity_id = await _poll_upload_status(
-            client, tokens.access_token, upload_id
-        )
+        activity_id = await _poll_upload_status(client, tokens.access_token, upload_id)
 
         if activity_id is not None:
             await update_workout(

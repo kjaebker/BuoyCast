@@ -173,9 +173,7 @@ class Database:
                 continue
             logger.info("Applying migration %d: %s", version, description)
             await self._conn.executescript(sql)
-            await self._conn.execute(
-                "INSERT INTO schema_version (version) VALUES (?)", (version,)
-            )
+            await self._conn.execute("INSERT INTO schema_version (version) VALUES (?)", (version,))
             await self._conn.commit()
             logger.info("Migration %d applied", version)
 

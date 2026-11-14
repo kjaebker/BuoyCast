@@ -45,15 +45,23 @@ class TestConfigureLogging:
     def test_adds_console_handler(self):
         configure_logging()
         root = logging.getLogger()
-        stream_handlers = [h for h in root.handlers if isinstance(h, logging.StreamHandler)
-                           and not isinstance(h, logging.handlers.RotatingFileHandler)]
+        stream_handlers = [
+            h
+            for h in root.handlers
+            if isinstance(h, logging.StreamHandler)
+            and not isinstance(h, logging.handlers.RotatingFileHandler)
+        ]
         assert len(stream_handlers) == 1
 
     def test_console_handler_writes_to_stderr(self):
         configure_logging()
         root = logging.getLogger()
-        stream_handlers = [h for h in root.handlers if isinstance(h, logging.StreamHandler)
-                           and not isinstance(h, logging.handlers.RotatingFileHandler)]
+        stream_handlers = [
+            h
+            for h in root.handlers
+            if isinstance(h, logging.StreamHandler)
+            and not isinstance(h, logging.handlers.RotatingFileHandler)
+        ]
         assert stream_handlers[0].stream is sys.stderr
 
     def test_no_file_handler_when_log_dir_none(self):
@@ -99,8 +107,12 @@ class TestConfigureLogging:
         configure_logging()
         configure_logging()
         root = logging.getLogger()
-        stream_handlers = [h for h in root.handlers if isinstance(h, logging.StreamHandler)
-                           and not isinstance(h, logging.handlers.RotatingFileHandler)]
+        stream_handlers = [
+            h
+            for h in root.handlers
+            if isinstance(h, logging.StreamHandler)
+            and not isinstance(h, logging.handlers.RotatingFileHandler)
+        ]
         # Second call clears and re-adds — should still be exactly one
         assert len(stream_handlers) == 1
 

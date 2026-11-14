@@ -30,6 +30,7 @@ from src.models import StrokeRecord, WorkoutRecord
 
 logger = logging.getLogger(__name__)
 
+
 def _to_fit_timestamp(dt: datetime) -> int:
     """Convert datetime to milliseconds since Unix epoch.
 

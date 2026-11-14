@@ -86,9 +86,7 @@ class Settings(BaseSettings):
         **kwargs: Any,
     ) -> tuple[Any, ...]:
         toml_file = cls._toml_path or "config.toml"
-        return (
-            TomlConfigSettingsSource(settings_cls, toml_file=Path(toml_file)),
-        )
+        return (TomlConfigSettingsSource(settings_cls, toml_file=Path(toml_file)),)
 
 
 def load_settings(toml_path: str | Path | None = None) -> Settings:

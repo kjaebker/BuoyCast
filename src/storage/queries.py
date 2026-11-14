@@ -6,9 +6,9 @@ All functions take a Database instance and operate on Pydantic models.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from src.models import AppSettings, StrokeRecord, StravaUploadStatus, WorkoutRecord
+from src.models import AppSettings, StravaUploadStatus, StrokeRecord, WorkoutRecord
 from src.storage.db import Database
 
 
@@ -68,9 +68,7 @@ async def get_workout(db: Database, workout_id: str) -> WorkoutRecord | None:
     return _row_to_workout(row)
 
 
-async def list_workouts(
-    db: Database, limit: int = 20, offset: int = 0
-) -> list[WorkoutRecord]:
+async def list_workouts(db: Database, limit: int = 20, offset: int = 0) -> list[WorkoutRecord]:
     """List workouts ordered by start time (newest first)."""
     rows = await db.fetch_all(
         "SELECT * FROM workouts ORDER BY started_at DESC LIMIT ? OFFSET ?",
@@ -120,9 +118,7 @@ async def get_strokes(db: Database, workout_id: str) -> list[StrokeRecord]:
 
 async def get_incomplete_workout(db: Database) -> WorkoutRecord | None:
     """Find a workout missing ended_at — for boot-time recovery."""
-    row = await db.fetch_one(
-        "SELECT * FROM workouts WHERE ended_at = '' OR ended_at IS NULL"
-    )
+    row = await db.fetch_one("SELECT * FROM workouts WHERE ended_at = '' OR ended_at IS NULL")
     if row is None:
         return None
     return _row_to_workout(row)
@@ -178,7 +174,7 @@ async def get_app_settings(db: Database) -> AppSettings:
 
 async def update_app_settings(db: Database, **fields) -> None:
     """Update app settings. Creates row if missing."""
-    fields["updated_at"] = datetime.now(timezone.utc).isoformat()
+    fields["updated_at"] = datetime.now(UTC).isoformat()
     set_clause = ", ".join(f"{k} = ?" for k in fields.keys())
     values = tuple(fields.values())
 

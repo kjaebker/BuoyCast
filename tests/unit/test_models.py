@@ -1,6 +1,6 @@
 """Tests for Pydantic data models."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -14,7 +14,7 @@ from src.models import (
     WSMessage,
 )
 
-NOW = datetime.now(tz=timezone.utc)
+NOW = datetime.now(tz=UTC)
 
 
 # --- WorkoutState ---

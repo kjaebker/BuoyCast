@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC
+
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -16,7 +18,6 @@ from src.storage.queries import (
     list_workouts,
     update_workout,
 )
-from src.workout.state import InvalidTransitionError
 
 router = APIRouter()
 
@@ -122,6 +123,7 @@ async def end_workout(request: Request):
     reader = state.s4_reader
     if reader is not None:
         import asyncio
+
         asyncio.create_task(reader.send_reset())
 
     return {"state": new_state.value}
@@ -154,7 +156,9 @@ async def force_reset_workout(request: Request):
 
 
 @router.post("/workouts/{workout_id}/upload")
-async def upload_workout_endpoint(request: Request, workout_id: str, body: UploadRequest | None = None):
+async def upload_workout_endpoint(
+    request: Request, workout_id: str, body: UploadRequest | None = None
+):
     """Trigger Strava upload for a workout. Returns 202 Accepted."""
     state = _get_state(request)
     workout = await get_workout(state.db, workout_id)
@@ -175,9 +179,10 @@ async def upload_workout_endpoint(request: Request, workout_id: str, body: Uploa
         app_settings = await get_app_settings(state.db)
         include_hr = app_settings.include_hr_in_strava_upload
 
-    from src.strava.upload import upload_workout
     import asyncio
     import logging
+
+    from src.strava.upload import upload_workout
 
     _logger = logging.getLogger(__name__)
 
@@ -203,9 +208,7 @@ async def skip_workout(request: Request, workout_id: str):
     workout = await get_workout(state.db, workout_id)
     if workout is None:
         return JSONResponse(status_code=404, content={"detail": "Workout not found"})
-    await update_workout(
-        state.db, workout_id, strava_upload_status=StravaUploadStatus.SKIPPED
-    )
+    await update_workout(state.db, workout_id, strava_upload_status=StravaUploadStatus.SKIPPED)
     return {"status": "skipped", "workout_id": workout_id}
 
 
@@ -223,7 +226,7 @@ async def get_recovery_workout(request: Request):
 @router.post("/recovery/{workout_id}/discard")
 async def discard_recovery_workout(request: Request, workout_id: str):
     """Discard an incomplete workout — sets ended_at and marks SKIPPED."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     state = _get_state(request)
     workout = await get_workout(state.db, workout_id)
@@ -232,7 +235,7 @@ async def discard_recovery_workout(request: Request, workout_id: str):
     await update_workout(
         state.db,
         workout_id,
-        ended_at=datetime.now(timezone.utc),
+        ended_at=datetime.now(UTC),
         strava_upload_status=StravaUploadStatus.SKIPPED,
     )
     return {"status": "discarded", "workout_id": workout_id}

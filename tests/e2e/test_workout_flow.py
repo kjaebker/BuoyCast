@@ -6,8 +6,7 @@ the entire chain: state transitions, stroke recording, FIT generation, DB persis
 """
 
 import asyncio
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
@@ -22,7 +21,6 @@ from src.workout.detection import SmartDetection
 from src.workout.fit import generate_fit
 from src.workout.recorder import StrokeRecorder
 from src.workout.state import WorkoutStateMachine
-
 
 # --- Fixtures ---
 
@@ -94,7 +92,7 @@ def _s4_metrics(
 ) -> RowingMetrics:
     """Create S4-style metrics (no HR — merged by DataMerger)."""
     return RowingMetrics(
-        timestamp=datetime.now(tz=timezone.utc),
+        timestamp=datetime.now(tz=UTC),
         stroke_rate=stroke_rate,
         stroke_count=stroke_count,
         distance_m=distance_m,
@@ -107,7 +105,7 @@ def _s4_metrics(
 def _hr_metrics(bpm: int = 140) -> RowingMetrics:
     """Create TICKR-style metrics (HR only)."""
     return RowingMetrics(
-        timestamp=datetime.now(tz=timezone.utc),
+        timestamp=datetime.now(tz=UTC),
         heart_rate_bpm=bpm,
         rr_intervals_ms=[700],
     )
@@ -143,13 +141,16 @@ async def test_full_workout_flow(event_bus, sm, merger, detection, recorder, db,
         # Simulate 10 seconds of rowing with HR
         for i in range(10):
             await _emit_hr(event_bus, _hr_metrics(bpm=135 + i))
-            await _emit_s4(event_bus, _s4_metrics(
-                stroke_rate=28.0,
-                distance_m=float(i * 20),
-                stroke_count=i + 1,
-                power=150.0,
-                pace=120.0,
-            ))
+            await _emit_s4(
+                event_bus,
+                _s4_metrics(
+                    stroke_rate=28.0,
+                    distance_m=float(i * 20),
+                    stroke_count=i + 1,
+                    power=150.0,
+                    pace=120.0,
+                ),
+            )
 
         # Wait for periodic flush
         await asyncio.sleep(0.1)
@@ -265,9 +266,13 @@ async def test_s4_disconnect_pauses_workout(event_bus, sm, merger, detection, re
 
         # Row for a bit
         for i in range(5):
-            await _emit_s4(event_bus, _s4_metrics(
-                stroke_rate=28.0, distance_m=float(i * 20),
-            ))
+            await _emit_s4(
+                event_bus,
+                _s4_metrics(
+                    stroke_rate=28.0,
+                    distance_m=float(i * 20),
+                ),
+            )
 
         assert sm.state == WorkoutState.ACTIVE
         assert recorder.total_recorded == 5
@@ -289,9 +294,13 @@ async def test_s4_disconnect_pauses_workout(event_bus, sm, merger, detection, re
 
         # More rowing after reconnect
         for i in range(3):
-            await _emit_s4(event_bus, _s4_metrics(
-                stroke_rate=28.0, distance_m=float(140 + i * 20),
-            ))
+            await _emit_s4(
+                event_bus,
+                _s4_metrics(
+                    stroke_rate=28.0,
+                    distance_m=float(140 + i * 20),
+                ),
+            )
 
         # End workout
         await sm.end()

@@ -7,7 +7,7 @@ import json as _json
 import logging
 import time
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +26,7 @@ from src.web.routes.workouts import router as workouts_router
 from src.workout.state import InvalidTransitionError, WorkoutStateMachine
 
 logger = logging.getLogger(__name__)
+
 
 async def _run_cmd(*cmd: str, timeout_s: float = 30) -> tuple[int, str, str]:
     """Run a command without blocking the event loop. Returns (rc, stdout, stderr)."""
@@ -153,9 +154,7 @@ def create_app(
             "workout_state": sm.state.value if sm else WorkoutState.IDLE.value,
             "uptime_seconds": int(time.monotonic() - app_state.start_time),
             "last_metrics_ts": (
-                app_state.last_metrics_ts.isoformat()
-                if app_state.last_metrics_ts
-                else None
+                app_state.last_metrics_ts.isoformat() if app_state.last_metrics_ts else None
             ),
         }
 
@@ -353,9 +352,7 @@ async def _ws_broadcast_loop(app_state: AppState) -> None:
             event = await fan_in.get()
 
             # Update last metrics timestamp
-            if event.type == EventType.MERGED_METRICS and isinstance(
-                event.data, RowingMetrics
-            ):
+            if event.type == EventType.MERGED_METRICS and isinstance(event.data, RowingMetrics):
                 app_state.last_metrics_ts = event.data.timestamp
 
             # Track device connection state
@@ -369,36 +366,42 @@ async def _ws_broadcast_loop(app_state: AppState) -> None:
                 app_state.tickr_connected = False
 
             # Build JSON message directly — avoids Pydantic WSMessage overhead
-            if event.type == EventType.MERGED_METRICS and isinstance(
-                event.data, RowingMetrics
-            ):
-                msg_json = _json_dumps({
-                    "type": "metrics_update",
-                    "data": event.data.model_dump(mode="json"),
-                })
+            if event.type == EventType.MERGED_METRICS and isinstance(event.data, RowingMetrics):
+                msg_json = _json_dumps(
+                    {
+                        "type": "metrics_update",
+                        "data": event.data.model_dump(mode="json"),
+                    }
+                )
             elif event.type in (EventType.S4_CONNECTED, EventType.S4_DISCONNECTED):
                 reader = app_state.s4_reader
-                msg_json = _json_dumps({
-                    "type": "s4_status",
-                    "data": {
-                        "connected": event.type == EventType.S4_CONNECTED,
-                        "paused": reader.paused if reader else False,
-                    },
-                })
+                msg_json = _json_dumps(
+                    {
+                        "type": "s4_status",
+                        "data": {
+                            "connected": event.type == EventType.S4_CONNECTED,
+                            "paused": reader.paused if reader else False,
+                        },
+                    }
+                )
             elif event.type in (EventType.TICKR_CONNECTED, EventType.TICKR_DISCONNECTED):
                 reader = app_state.tickr_reader
-                msg_json = _json_dumps({
-                    "type": "tickr_status",
-                    "data": {
-                        "connected": event.type == EventType.TICKR_CONNECTED,
-                        "paused": reader.paused if reader else False,
-                    },
-                })
+                msg_json = _json_dumps(
+                    {
+                        "type": "tickr_status",
+                        "data": {
+                            "connected": event.type == EventType.TICKR_CONNECTED,
+                            "paused": reader.paused if reader else False,
+                        },
+                    }
+                )
             else:
-                msg_json = _json_dumps({
-                    "type": event.type.value,
-                    "data": event.data if isinstance(event.data, dict) else {},
-                })
+                msg_json = _json_dumps(
+                    {
+                        "type": event.type.value,
+                        "data": event.data if isinstance(event.data, dict) else {},
+                    }
+                )
 
             # Broadcast to all clients
             disconnected = set()

@@ -44,7 +44,9 @@ class TestCheckForUpdate:
         assert info.error is None
 
     async def test_same_release_is_up_to_date(self):
-        info = await check_for_update("owner/repo", transport=_transport(200, {"tag_name": "v0.2.0"}))
+        info = await check_for_update(
+            "owner/repo", transport=_transport(200, {"tag_name": "v0.2.0"})
+        )
         assert info.update_available is False
         assert info.error is None
 

@@ -49,8 +49,7 @@ async def run(settings: Settings, simulate: bool = False) -> None:
     strava_auth = None
     if settings.strava.client_id and settings.strava.client_secret:
         redirect_uri = (
-            f"http://{settings.server.mdns_name}.local"
-            f":{settings.server.port}/api/strava/callback"
+            f"http://{settings.server.mdns_name}.local:{settings.server.port}/api/strava/callback"
         )
         strava_auth = StravaAuth(
             db=db,
