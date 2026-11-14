@@ -194,7 +194,10 @@ data/
 screenshot-*.png
 
 # Nix / direnv
-.direnv/release/
+.direnv/
+
+# Release tarballs (deploy/package.sh)
+release/
 
 # macOS
 .DS_Store
