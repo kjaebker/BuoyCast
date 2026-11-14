@@ -179,6 +179,7 @@ class FTMSBroadcaster:
         self._running = False
         self._task: asyncio.Task[None] | None = None
         self._server: object | None = None  # bless.BlessServer, lazily imported
+        self._setup_task: asyncio.Task | None = None
         self._dbus_bus: object | None = None  # dbus-next/dbus-fast MessageBus for pairing agent
         self._latest_data: bytes = pack_rower_data(
             RowingMetrics(
@@ -203,9 +204,16 @@ class FTMSBroadcaster:
         self._running = True
         self._queue = self._bus.subscribe(EventType.MERGED_METRICS)
         self._task = asyncio.create_task(self._run_loop())
+        # BlueZ setup retries for up to ~2 minutes when Bluetooth is unhealthy.
+        # Run it in the background so the web server (and dashboard) start
+        # immediately regardless; metrics are packed and pushed once it's up.
+        self._setup_task = asyncio.create_task(self._setup_in_background())
 
+    async def _setup_in_background(self) -> None:
         try:
             await self._setup_ble()
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
             logger.error(
                 "BlueZ GATT setup failed — BLE broadcasting disabled. "
@@ -221,6 +229,12 @@ class FTMSBroadcaster:
     async def stop(self) -> None:
         """Stop the broadcaster."""
         self._running = False
+        if self._setup_task is not None and not self._setup_task.done():
+            self._setup_task.cancel()
+            try:
+                await self._setup_task
+            except asyncio.CancelledError:
+                pass
         if self._task:
             self._task.cancel()
             try:

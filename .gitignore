@@ -11,7 +11,6 @@ __pycache__/
 build/
 develop-eggs/
 dist/
-!dashboard/dist/
 downloads/
 eggs/
 .eggs/
@@ -183,7 +182,7 @@ cython_debug/
 
 # Dashboard
 dashboard/node_modules/
-# dashboard/dist/ is intentionally tracked — built by GitHub Actions, pulled by Pi
+dashboard/dist/
 !dashboard/src/lib/
 
 # BuoyCast
@@ -195,4 +194,7 @@ data/
 screenshot-*.png
 
 # Nix / direnv
-.direnv/
+.direnv/release/
+
+# macOS
+.DS_Store

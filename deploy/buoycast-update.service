@@ -1,0 +1,17 @@
+# One-shot unit that installs the latest BuoyCast release. Started by the
+# dashboard ("Install Update") via polkit, or by hand:
+#   sudo systemctl start buoycast-update
+# Output: journalctl -u buoycast-update
+#
+# It is a separate unit on purpose: the update restarts buoycast.service, and
+# systemd kills every process in a unit's cgroup when it stops, so an updater
+# running inside buoycast.service would kill itself halfway through.
+[Unit]
+Description=Install the latest BuoyCast release
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/buoycast-update
+TimeoutStartSec=20min

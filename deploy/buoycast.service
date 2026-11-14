@@ -1,0 +1,40 @@
+[Unit]
+Description=BuoyCast (WaterRower S4 bridge)
+Documentation=https://github.com/kjaebker/BuoyCast
+After=network.target bluetooth.target bluetooth.service hciuart.service
+Wants=avahi-daemon.service bluetooth.service
+
+[Service]
+Type=simple
+User=buoycast
+Group=buoycast
+SupplementaryGroups=dialout bluetooth systemd-journal
+WorkingDirectory=/opt/buoycast
+# "-" = keep going without Bluetooth (dashboard still works; BLE reports unavailable).
+ExecStartPre=-+/usr/sbin/rfkill unblock bluetooth
+# bluetoothctl blocks forever if bluetoothd is not running; cap it.
+ExecStartPre=-+/usr/bin/timeout 10 /usr/bin/bluetoothctl power on
+# Give the HCI adapter time to fully initialise its LE advertising stack.
+# Without this, bless can call RegisterAdvertisement before BlueZ's
+# LEAdvertisingManager is ready: the log says "advertising" but nothing
+# goes over the air.
+ExecStartPre=+/bin/sleep 3
+ExecStart=/opt/buoycast/current/.venv/bin/buoycast --config /opt/buoycast/config.toml
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+
+# Resource limits for Pi Zero 2W
+MemoryMax=200M
+CPUQuota=80%
+
+# Hardening. The app only writes to data/ and logs/; the code itself is
+# root-owned and read-only to this user.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/buoycast/data /opt/buoycast/logs
+
+[Install]
+WantedBy=multi-user.target
