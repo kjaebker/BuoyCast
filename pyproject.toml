@@ -18,6 +18,10 @@ dependencies = [
     "structlog>=24.4",
     "garmin-fit-sdk>=21.158",
     "fit-tool>=0.9.15",
+    # BLE: bleak = central (TICKR heart rate), bless = peripheral (FTMS broadcast).
+    # bless pulls in dbus-fast on Linux; dbus-python is NOT needed.
+    "bleak>=1.0",
+    "bless>=0.2.6",
 ]
 
 [project.optional-dependencies]
@@ -34,7 +38,12 @@ packages = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-filterwarnings = ["error"]
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = [
+    "error",
+    # Starlette now prefers httpx2 for TestClient; httpx still works fine.
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated:starlette.exceptions.StarletteDeprecationWarning",
+]
 
 [tool.ruff]
 target-version = "py311"
