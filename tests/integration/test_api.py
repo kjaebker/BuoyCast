@@ -438,12 +438,18 @@ class TestUpdateEndpoints:
         helper = tmp_path / "buoycast-update"
         helper.write_text("#!/bin/sh\n")
         monkeypatch.setattr(server, "UPDATE_HELPER", helper)
-        started = []
-        monkeypatch.setattr(server.subprocess, "Popen", lambda *a, **k: started.append(a))
+        ran = []
+
+        async def fake_run_after(delay_s, *cmd):
+            ran.append(cmd)
+
+        monkeypatch.setattr(server, "_run_after", fake_run_after)
 
         resp = await client.post("/api/system/update")
         assert resp.status_code == 202
         assert resp.json()["status"] == "update_started"
+        await asyncio.sleep(0)
+        assert ran == [("systemctl", "start", "--no-block", "buoycast-update.service")]
 
 
 class TestSpaStaticServing:

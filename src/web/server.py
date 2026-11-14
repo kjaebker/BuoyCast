@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json as _json
 import logging
-import subprocess
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -27,6 +26,30 @@ from src.web.routes.workouts import router as workouts_router
 from src.workout.state import InvalidTransitionError, WorkoutStateMachine
 
 logger = logging.getLogger(__name__)
+
+async def _run_cmd(*cmd: str, timeout_s: float = 30) -> tuple[int, str, str]:
+    """Run a command without blocking the event loop. Returns (rc, stdout, stderr)."""
+    proc = await asyncio.create_subprocess_exec(
+        *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+    )
+    try:
+        out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
+    except TimeoutError:
+        proc.kill()
+        raise
+    return proc.returncode or 0, out.decode(errors="replace"), err.decode(errors="replace")
+
+
+async def _run_after(delay_s: float, *cmd: str) -> None:
+    """Run a system command after a delay (so the HTTP response is sent first)."""
+    await asyncio.sleep(delay_s)
+    try:
+        rc, _, err = await _run_cmd(*cmd)
+        if rc != 0:
+            logger.error("%s failed (rc=%d): %s", " ".join(cmd), rc, err.strip())
+    except Exception as e:
+        logger.error("%s failed: %s", " ".join(cmd), e)
+
 
 class AppState:
     """Shared application state — injected into routes via app.state."""
@@ -185,39 +208,25 @@ def create_app(
         return {"tickr_paused": False}
 
     # System control
+    #
+    # These run unprivileged. install.sh adds a polkit rule that lets the
+    # buoycast user restart its own unit, start buoycast-update.service and
+    # reboot — nothing else. (sudo cannot work here: the unit sets
+    # NoNewPrivileges=true.)
+
     @app.post("/api/system/restart")
     async def restart_system():
-        """Restart Raspberry Pi (requires passwordless sudo for reboot)."""
-        import subprocess
-
-        logger.warning("System restart requested via API")
-        asyncio.create_task(_delayed_reboot())
+        """Reboot the Raspberry Pi."""
+        logger.warning("System reboot requested via API")
+        asyncio.create_task(_run_after(3, "systemctl", "reboot"))
         return {"status": "reboot_scheduled", "delay_seconds": 3}
-
-    async def _delayed_reboot():
-        """Delay before reboot to allow response to be sent."""
-        await asyncio.sleep(3)
-        try:
-            subprocess.run(["sudo", "reboot"], check=True)
-        except Exception as e:
-            logger.error("Restart failed: %s", e)
 
     @app.post("/api/system/restart-service")
     async def restart_service():
-        """Restart BuoyCast systemd service (requires passwordless sudo)."""
-        import subprocess
-
+        """Restart the BuoyCast systemd service."""
         logger.warning("Service restart requested via API")
-        asyncio.create_task(_delayed_service_restart())
+        asyncio.create_task(_run_after(2, "systemctl", "restart", "buoycast.service"))
         return {"status": "service_restart_scheduled", "delay_seconds": 2}
-
-    async def _delayed_service_restart():
-        """Delay before service restart to allow response to be sent."""
-        await asyncio.sleep(2)
-        try:
-            subprocess.run(["sudo", "systemctl", "restart", "buoycast"], check=True)
-        except Exception as e:
-            logger.error("Service restart failed: %s", e)
 
     # ── Software update endpoints ──────────────────────────────────────
 
@@ -230,9 +239,9 @@ def create_app(
     async def trigger_update():
         """Install the latest release and restart the service.
 
-        Runs the root-owned buoycast-update helper (installed by install.sh)
-        detached, so it survives the service restart it performs. The
-        dashboard briefly disconnects and reconnects.
+        Starts the separate buoycast-update.service unit. It must not run as
+        our child: stopping/restarting buoycast.service kills every process
+        in its cgroup, which would kill the updater halfway through.
         """
         if not UPDATE_HELPER.exists():
             return JSONResponse(
@@ -241,40 +250,27 @@ def create_app(
             )
 
         logger.warning("Software update triggered via API")
-        asyncio.create_task(_run_update())
+        asyncio.create_task(
+            _run_after(1, "systemctl", "start", "--no-block", "buoycast-update.service")
+        )
         return {
             "status": "update_started",
             "message": "Installing the latest release. The service will restart automatically.",
         }
 
-    async def _run_update():
-        """Start the update helper after a short delay so the response is sent."""
-        await asyncio.sleep(1)
-        try:
-            subprocess.Popen(
-                ["sudo", "-n", str(UPDATE_HELPER)],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True,  # Detach from our process group
-            )
-        except Exception as e:
-            logger.error("Update failed to start: %s", e)
-
     @app.get("/api/logs")
     async def get_logs(lines: int = 100):
-        """Get recent logs from journald."""
-        import subprocess
-
+        """Get recent BuoyCast log lines from journald."""
+        lines = max(1, min(lines, 2000))
         try:
-            result = subprocess.run(
-                ["journalctl", "-u", "buoycast", "-n", str(lines), "--no-pager"],
-                capture_output=True,
-                text=True,
-                timeout=5,
+            rc, out, err = await _run_cmd(
+                "journalctl", "-u", "buoycast", "-n", str(lines), "--no-pager", timeout_s=5
             )
-            return {"logs": result.stdout}
         except Exception as e:
             return JSONResponse(status_code=500, content={"detail": f"Log error: {e}"})
+        if rc != 0:
+            return JSONResponse(status_code=500, content={"detail": f"Log error: {err.strip()}"})
+        return {"logs": out}
 
     # WebSocket endpoint
     @app.websocket("/ws/live")

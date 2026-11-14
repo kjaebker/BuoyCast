@@ -18,7 +18,8 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
-# Installed by install.sh; the only command the service user may sudo for updates.
+# Installed by install.sh (run via buoycast-update.service). Its presence marks
+# an install that can update itself.
 UPDATE_HELPER = Path("/usr/local/sbin/buoycast-update")
 
 _VERSION_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)(?:[-.]?(.+))?$")
