@@ -116,12 +116,13 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
       setUpdateInfo(data);
     } catch {
       setUpdateInfo({
-        current_sha: null,
-        remote_sha: null,
+        current_version: "unknown",
+        latest_version: null,
         update_available: false,
-        commits_behind: 0,
-        latest_commit_message: null,
-        error: "Failed to reach update server",
+        release_notes: null,
+        release_url: null,
+        can_self_update: false,
+        error: "Failed to reach BuoyCast",
       });
     } finally {
       setUpdateChecking(false);
@@ -390,7 +391,7 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold text-foreground">
                       {updateInfo?.update_available
-                        ? `${updateInfo.commits_behind} update${updateInfo.commits_behind !== 1 ? "s" : ""} available`
+                        ? `Version ${updateInfo.latest_version} available`
                         : updateInfo && !updateInfo.error
                           ? "Up to date"
                           : updateInfo?.error
@@ -398,20 +399,35 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
                             : "BuoyCast"}
                     </div>
                     <div className="text-[0.72rem] uppercase tracking-[0.18em] text-muted-foreground">
-                      {updateInfo?.current_sha
-                        ? `Running: ${updateInfo.current_sha}`
+                      {updateInfo
+                        ? `Running v${updateInfo.current_version}`
                         : "Check for available updates"}
                     </div>
                   </div>
                 </div>
 
-                {/* Latest commit message (if update available) */}
-                {updateInfo?.update_available && updateInfo.latest_commit_message && (
-                  <div className="rounded-xl border border-border/60 bg-black/30 px-3 py-2">
-                    <p className="text-sm text-foreground/80">
-                      Latest: {updateInfo.latest_commit_message}
+                {/* Release notes (if update available) */}
+                {updateInfo?.update_available && updateInfo.release_notes && (
+                  <div className="max-h-40 overflow-auto rounded-xl border border-border/60 bg-black/30 px-3 py-2">
+                    <p className="whitespace-pre-line text-sm text-foreground/80">
+                      {updateInfo.release_notes}
                     </p>
                   </div>
+                )}
+                {updateInfo?.update_available && updateInfo.release_url && (
+                  <a
+                    href={updateInfo.release_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-block text-sm text-primary underline-offset-4 hover:underline"
+                  >
+                    View release on GitHub
+                  </a>
+                )}
+                {updateInfo?.update_available && !updateInfo.can_self_update && (
+                  <p className="text-sm text-muted-foreground">
+                    This install can't update itself. Re-run install.sh on the Pi to upgrade.
+                  </p>
                 )}
 
                 {/* Error message */}
@@ -421,7 +437,7 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
 
                 {/* Action buttons */}
                 <div className="flex gap-3">
-                  {updateInfo?.update_available && !updateInstalling ? (
+                  {updateInfo?.update_available && updateInfo.can_self_update && !updateInstalling ? (
                     <button
                       onClick={handleInstallUpdate}
                       className="flex-1 rounded-full bg-primary py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
