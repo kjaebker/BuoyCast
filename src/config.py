@@ -50,6 +50,12 @@ class StorageSettings(BaseModel):
     fit_dir: str = "data/fit"
 
 
+class UpdateSettings(BaseModel):
+    # GitHub "owner/name" whose Releases the Pi installs from. Change this if
+    # you run a fork.
+    repo: str = "kjaebker/BuoyCast"
+
+
 class LoggingSettings(BaseModel):
     level: str = "INFO"
     log_dir: str = "logs"
@@ -71,6 +77,7 @@ class Settings(BaseSettings):
     strava: StravaSettings = StravaSettings()
     storage: StorageSettings = StorageSettings()
     logging: LoggingSettings = LoggingSettings()
+    updates: UpdateSettings = UpdateSettings()
 
     @classmethod
     def settings_customise_sources(

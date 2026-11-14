@@ -20,115 +20,13 @@ from starlette.requests import Request
 
 from src.events import EventBus, EventType
 from src.models import RowingMetrics, WorkoutState
+from src.updates import UPDATE_HELPER, UpdateInfo, check_for_update, current_version
 from src.web.routes.settings import router as settings_router
 from src.web.routes.strava import router as strava_router
 from src.web.routes.workouts import router as workouts_router
 from src.workout.state import InvalidTransitionError, WorkoutStateMachine
 
 logger = logging.getLogger(__name__)
-
-INSTALL_DIR = Path("/opt/buoycast")
-
-
-async def check_git_updates() -> dict:
-    """Fetch from origin and compare local HEAD vs remote. Returns update info dict."""
-    import subprocess
-
-    project_root = Path(__file__).parent.parent.parent
-
-    # Find the git repo — either /opt/buoycast or the source dir recorded during install
-    git_dir: Path | None = None
-    if (INSTALL_DIR / ".git").exists():
-        git_dir = INSTALL_DIR
-    elif (INSTALL_DIR / ".source_dir").exists():
-        source = INSTALL_DIR.joinpath(".source_dir").read_text().strip()
-        if Path(source, ".git").exists():
-            git_dir = Path(source)
-    # Fallback for dev: use the project root
-    if git_dir is None and (project_root / ".git").exists():
-        git_dir = project_root
-
-    if git_dir is None:
-        return {
-            "current_sha": None,
-            "remote_sha": None,
-            "update_available": False,
-            "commits_behind": 0,
-            "latest_commit_message": None,
-            "error": "No git repository found",
-        }
-
-    try:
-        # Base git command: skip safe.directory ownership check (the repo
-        # may be owned by a different user than the service process, e.g.
-        # root-owned .git in /home/pi/BuoyCast).
-        git_cmd = ["git", "-C", str(git_dir), "-c", "safe.directory=*"]
-
-        async def _git(*args: str) -> tuple[int, str, str]:
-            """Run a git command asynchronously, returning (rc, stdout, stderr)."""
-            proc = await asyncio.create_subprocess_exec(
-                *git_cmd, *args,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=30)
-            return (
-                proc.returncode or 0,
-                stdout_b.decode().strip(),
-                stderr_b.decode().strip(),
-            )
-
-        # Fetch latest from origin
-        rc, _, err = await _git("fetch", "origin", "main", "--quiet")
-        if rc != 0:
-            return {
-                "current_sha": None,
-                "remote_sha": None,
-                "update_available": False,
-                "commits_behind": 0,
-                "latest_commit_message": None,
-                "error": f"git fetch failed: {err}",
-            }
-
-        # Get local and remote HEAD
-        _, local, _ = await _git("rev-parse", "HEAD")
-        _, remote, _ = await _git("rev-parse", "origin/main")
-
-        # Count commits behind
-        _, behind_output, _ = await _git("rev-list", "--count", "HEAD..origin/main")
-        commits_behind = int(behind_output) if behind_output.isdigit() else 0
-
-        # Get latest remote commit message
-        _, latest_msg, _ = await _git("log", "origin/main", "-1", "--format=%s")
-
-        return {
-            "current_sha": local[:8],
-            "remote_sha": remote[:8],
-            "update_available": local != remote,
-            "commits_behind": commits_behind,
-            "latest_commit_message": latest_msg if local != remote else None,
-            "error": None,
-        }
-    except asyncio.TimeoutError:
-        return {
-            "current_sha": None,
-            "remote_sha": None,
-            "update_available": False,
-            "commits_behind": 0,
-            "latest_commit_message": None,
-            "error": "git fetch timed out",
-        }
-    except Exception as e:
-        logger.warning("Update check failed: %s", e)
-        return {
-            "current_sha": None,
-            "remote_sha": None,
-            "update_available": False,
-            "commits_behind": 0,
-            "latest_commit_message": None,
-            "error": f"Failed to check: {e}",
-        }
-
 
 class AppState:
     """Shared application state — injected into routes via app.state."""
@@ -152,6 +50,8 @@ def create_app(
     state_machine: WorkoutStateMachine | None = None,
     db: Any = None,
     strava_auth: Any = None,
+    update_repo: str = "kjaebker/BuoyCast",
+    dist_dir: Path | None = None,
 ) -> FastAPI:
     """Create and configure the FastAPI application.
 
@@ -182,7 +82,7 @@ def create_app(
 
     app = FastAPI(
         title="BuoyCast",
-        version="0.1.0",
+        version=current_version(),
         lifespan=lifespan,
     )
 
@@ -212,7 +112,7 @@ def create_app(
     app.include_router(settings_router, prefix="/api")
 
     # Static file serving for the dashboard SPA
-    _dist = Path(__file__).parent.parent.parent / "dashboard" / "dist"
+    _dist = (dist_dir or Path(__file__).parent.parent.parent / "dashboard" / "dist").resolve()
     if _dist.exists():
         app.mount("/assets", StaticFiles(directory=_dist / "assets"), name="assets")
 
@@ -321,47 +221,38 @@ def create_app(
 
     # ── Software update endpoints ──────────────────────────────────────
 
-    @app.get("/api/system/update/check")
-    async def check_for_update():
-        """Check if new commits are available on origin/main.
+    @app.get("/api/system/update/check", response_model=UpdateInfo)
+    async def check_update():
+        """Compare the running version with the latest GitHub Release."""
+        return await check_for_update(update_repo)
 
-        Runs git fetch and compares local HEAD vs remote HEAD.
-        """
-        return await check_git_updates()
-
-    @app.post("/api/system/update")
+    @app.post("/api/system/update", status_code=202)
     async def trigger_update():
-        """Pull latest code and restart the service.
+        """Install the latest release and restart the service.
 
-        Runs update.sh in the background. The service will restart
-        automatically after the update completes, so the dashboard will
-        briefly disconnect and reconnect.
+        Runs the root-owned buoycast-update helper (installed by install.sh)
+        detached, so it survives the service restart it performs. The
+        dashboard briefly disconnects and reconnects.
         """
-        # Check that update.sh exists
-        update_script = INSTALL_DIR / "update.sh"
-        if not update_script.exists():
-            update_script = Path(__file__).parent.parent.parent / "update.sh"
-        if not update_script.exists():
+        if not UPDATE_HELPER.exists():
             return JSONResponse(
                 status_code=503,
-                content={"detail": "update.sh not found"},
+                content={"detail": "Self-update is only available on installs made by install.sh"},
             )
 
         logger.warning("Software update triggered via API")
-
-        # Run update in background — it will restart the service at the end
-        asyncio.create_task(_run_update(str(update_script)))
+        asyncio.create_task(_run_update())
         return {
             "status": "update_started",
-            "message": "Pulling latest code and restarting. The service will restart automatically.",
+            "message": "Installing the latest release. The service will restart automatically.",
         }
 
-    async def _run_update(script_path: str):
-        """Run update.sh in a subprocess after a short delay."""
-        await asyncio.sleep(1)  # Let the response be sent first
+    async def _run_update():
+        """Start the update helper after a short delay so the response is sent."""
+        await asyncio.sleep(1)
         try:
             subprocess.Popen(
-                ["sudo", "bash", script_path],
+                ["sudo", "-n", str(UPDATE_HELPER)],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,  # Detach from our process group
@@ -409,8 +300,10 @@ def create_app(
 
         @app.get("/{full_path:path}")
         async def serve_spa(full_path: str):
-            file_path = _dist / full_path
-            if file_path.exists() and file_path.is_file():
+            # Resolve and confine to dist/ — the path param is percent-decoded,
+            # so "..%2F" would otherwise escape and expose config.toml / the DB.
+            file_path = (_dist / full_path).resolve()
+            if file_path.is_relative_to(_dist) and file_path.is_file():
                 return FileResponse(file_path)
             return FileResponse(_dist / "index.html")
 

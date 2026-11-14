@@ -397,87 +397,76 @@ class TestUpdateEndpoints:
     """Tests for /api/system/update/check and /api/system/update."""
 
     async def test_check_update_returns_structure(self, client, monkeypatch):
-        """GET /api/system/update/check returns expected fields."""
+        """GET /api/system/update/check returns the UpdateInfo shape."""
+        from src.updates import UpdateInfo
         from src.web import server
 
-        async def mock_check():
-            return {
-                "current_sha": "abc12345",
-                "remote_sha": "def67890",
-                "update_available": True,
-                "commits_behind": 3,
-                "latest_commit_message": "feat: new feature",
-                "error": None,
-            }
+        async def mock_check(repo):
+            assert repo == "kjaebker/BuoyCast"
+            return UpdateInfo(
+                current_version="0.2.0",
+                latest_version="0.3.0",
+                update_available=True,
+                release_notes="New stuff",
+                release_url="https://example.invalid/r",
+            )
 
-        monkeypatch.setattr(server, "check_git_updates", mock_check)
+        monkeypatch.setattr(server, "check_for_update", mock_check)
 
         resp = await client.get("/api/system/update/check")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["current_sha"] == "abc12345"
-        assert data["remote_sha"] == "def67890"
+        assert data["current_version"] == "0.2.0"
+        assert data["latest_version"] == "0.3.0"
         assert data["update_available"] is True
-        assert data["commits_behind"] == 3
-        assert data["latest_commit_message"] == "feat: new feature"
+        assert data["release_notes"] == "New stuff"
+        assert data["can_self_update"] is False
         assert data["error"] is None
 
-    async def test_check_update_up_to_date(self, client, monkeypatch):
-        """GET /api/system/update/check reports up to date when SHAs match."""
+    async def test_trigger_update_without_helper_returns_503(self, client, monkeypatch, tmp_path):
+        """POST /api/system/update returns 503 when not installed via install.sh."""
         from src.web import server
 
-        async def mock_check():
-            return {
-                "current_sha": "abc12345",
-                "remote_sha": "abc12345",
-                "update_available": False,
-                "commits_behind": 0,
-                "latest_commit_message": None,
-                "error": None,
-            }
-
-        monkeypatch.setattr(server, "check_git_updates", mock_check)
-
-        resp = await client.get("/api/system/update/check")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["update_available"] is False
-        assert data["commits_behind"] == 0
-
-    async def test_check_update_handles_error(self, client, monkeypatch):
-        """GET /api/system/update/check handles git errors gracefully."""
-        from src.web import server
-
-        async def mock_check():
-            return {
-                "current_sha": None,
-                "remote_sha": None,
-                "update_available": False,
-                "commits_behind": 0,
-                "latest_commit_message": None,
-                "error": "git fetch failed: connection refused",
-            }
-
-        monkeypatch.setattr(server, "check_git_updates", mock_check)
-
-        resp = await client.get("/api/system/update/check")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["update_available"] is False
-        assert "git fetch failed" in data["error"]
-
-    async def test_trigger_update_no_script(self, client, monkeypatch):
-        """POST /api/system/update returns 503 if update.sh is missing."""
-        from pathlib import Path
-
-        original_exists = Path.exists
-
-        def mock_exists(self):
-            if "update.sh" in str(self):
-                return False
-            return original_exists(self)
-
-        monkeypatch.setattr(Path, "exists", mock_exists)
-
+        monkeypatch.setattr(server, "UPDATE_HELPER", tmp_path / "missing")
         resp = await client.post("/api/system/update")
         assert resp.status_code == 503
+
+    async def test_trigger_update_with_helper_returns_202(self, client, monkeypatch, tmp_path):
+        """POST /api/system/update starts the helper when it is installed."""
+        from src.web import server
+
+        helper = tmp_path / "buoycast-update"
+        helper.write_text("#!/bin/sh\n")
+        monkeypatch.setattr(server, "UPDATE_HELPER", helper)
+        started = []
+        monkeypatch.setattr(server.subprocess, "Popen", lambda *a, **k: started.append(a))
+
+        resp = await client.post("/api/system/update")
+        assert resp.status_code == 202
+        assert resp.json()["status"] == "update_started"
+
+
+class TestSpaStaticServing:
+    """The SPA catch-all must never serve files outside dashboard/dist."""
+
+    @pytest.fixture
+    def dist_app(self, tmp_path):
+        dist = tmp_path / "dist"
+        (dist / "assets").mkdir(parents=True)
+        (dist / "index.html").write_text("<html>spa</html>")
+        (dist / "app.js").write_text("console.log(1)")
+        (tmp_path / "config.toml").write_text('client_secret = "s3cret"')
+        return create_app(dist_dir=dist)
+
+    async def test_serves_files_inside_dist(self, dist_app):
+        transport = ASGITransport(app=dist_app)
+        async with AsyncClient(transport=transport, base_url="http://t") as c:
+            assert (await c.get("/app.js")).text == "console.log(1)"
+            assert (await c.get("/some/route")).text == "<html>spa</html>"
+
+    @pytest.mark.parametrize("path", ["/..%2Fconfig.toml", "/..%2F..%2Fconfig.toml", "/%2E%2E/config.toml"])
+    async def test_rejects_path_traversal(self, dist_app, path):
+        transport = ASGITransport(app=dist_app)
+        async with AsyncClient(transport=transport, base_url="http://t") as c:
+            resp = await c.get(path)
+        assert "s3cret" not in resp.text
