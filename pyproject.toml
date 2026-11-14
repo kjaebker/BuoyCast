@@ -4,8 +4,10 @@ build-backend = "hatchling.build"
 
 [project]
 name = "buoycast"
-version = "0.1.0"
+version = "0.2.0"
 description = "Raspberry Pi bridge for WaterRower S4 — BLE FTMS, live dashboard, Strava upload"
+readme = "README.md"
+license = "MIT"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",
@@ -24,13 +26,16 @@ dependencies = [
     "bless>=0.2.6",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.25",
     "pytest-mock>=3.14",
     "ruff>=0.9",
 ]
+
+[project.scripts]
+buoycast = "src.main:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]

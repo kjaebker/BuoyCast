@@ -16,8 +16,9 @@
       {
         devShells.default = pkgs.mkShell {
           buildInputs = [
-            # Python (venv handles all packages)
+            # Python (uv manages the venv from uv.lock)
             pkgs.python312
+            pkgs.uv
 
             # SQLite
             pkgs.sqlite
@@ -40,22 +41,11 @@
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
 
           shellHook = ''
-            # Create venv if it doesn't exist
-            if [ ! -d .venv ]; then
-              echo "Creating Python virtual environment..."
-              python -m venv .venv
-            fi
-
-            # Activate venv (must be before any python commands)
+            # Sync the venv from uv.lock (fast no-op when already up to date)
+            export UV_PYTHON=${pkgs.python312}/bin/python3
+            export UV_PYTHON_DOWNLOADS=never
+            uv sync --quiet
             source .venv/bin/activate
-
-            # Install packages (includes pip-only deps like garmin-fit-sdk, fit-tool)
-            if [ ! -f .venv/.installed ]; then
-              echo "Installing Python packages..."
-              pip install -q --upgrade pip
-              pip install -q -e ".[dev]"
-              touch .venv/.installed
-            fi
 
             # Install npm dependencies if needed
             if [ ! -d dashboard/node_modules ]; then

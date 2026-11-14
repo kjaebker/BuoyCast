@@ -184,9 +184,15 @@ def main() -> None:
         action="store_true",
         help="Replace real S4/TICKR hardware with simulated data sources (for local dev)",
     )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=Path("config.toml"),
+        help="Path to config.toml (default: ./config.toml)",
+    )
     args = parser.parse_args()
 
-    config_path = Path("config.toml")
+    config_path: Path = args.config
     if not config_path.exists():
         if args.simulate and Path("config.toml.example").exists():
             config_path = Path("config.toml.example")
