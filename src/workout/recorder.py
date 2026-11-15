@@ -229,6 +229,9 @@ class StrokeRecorder:
                 )
             except Exception:
                 logger.exception("Failed to update workout record")
+            else:
+                # Tell downstream consumers (the HTTP exporter) the record is final.
+                await self._bus.emit(EventType.WORKOUT_SAVED, self._workout_id)
 
         self._workout_id = None
         self._all_strokes.clear()

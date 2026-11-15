@@ -1,6 +1,6 @@
 # BuoyCast
 
-A self-hosted Raspberry Pi bridge for the WaterRower S4. Reads the rower's USB serial data, broadcasts it over Bluetooth LE (FTMS) to a Peloton, captures heart rate from a Wahoo TICKR, serves a live PWA dashboard, and uploads workouts to Strava.
+A self-hosted Raspberry Pi bridge for the WaterRower S4. Reads the rower's USB serial data, broadcasts it over Bluetooth LE (FTMS) to a Peloton, captures heart rate from a Wahoo TICKR, serves a live PWA dashboard, and sends finished workouts to your own HTTP endpoint and/or Strava.
 
 ---
 
@@ -16,7 +16,8 @@ WaterRower S4  ──USB──►  Pi Zero 2W  ──BLE FTMS──►  Peloton
                               │
                          REST / WS ──►  Dashboard (PWA)
                               │
-                         Strava API ──►  Strava
+                         HTTP export ──►  your endpoint (JSON / FIT)
+                         Strava API  ──►  Strava
 ```
 
 | Feature | Detail |
@@ -28,6 +29,7 @@ WaterRower S4  ──USB──►  Pi Zero 2W  ──BLE FTMS──►  Peloton
 | WebSocket | Live metrics pushed over `/ws/live`; no polling |
 | Workout recording | Stroke-level data flushed to SQLite every 10 s; survives unexpected shutdown |
 | FIT export | `Sport.ROWING / SubSport.INDOOR_ROWING` with full HR time series |
+| HTTP export | POST each finished workout (JSON or FIT) to your own endpoint; retried until delivered ([docs/export.md](docs/export.md)) |
 | Strava upload | Manual OAuth2 flow (one-time); FIT upload via Strava API v3 |
 | Smart detection | Auto-pause after 30 s idle; auto-resume on stroke; prompts to start/end |
 | Wake lock | Screen stays on during active workout (iOS 16.4+ / Android Chrome) |
@@ -129,6 +131,10 @@ required = false               # workout proceeds without HR if unavailable
 client_id     = ""
 client_secret = ""
 
+[export]                       # optional, see docs/export.md
+url   = ""                     # e.g. "https://example.com/ingest/buoycast"
+token = ""                     # sent as a bearer token
+
 [workout]
 auto_pause_idle_s = 30
 auto_end_idle_s   = 300
@@ -162,6 +168,8 @@ json_logs = false
 | `POST` | `/api/workout/reset` | Reset from SUMMARY back to IDLE |
 | `POST` | `/api/workouts/{id}/upload` | Queue Strava upload (202 Accepted) |
 | `POST` | `/api/workouts/{id}/skip` | Mark SKIPPED |
+| `POST` | `/api/workouts/{id}/export` | Send to the export endpoint now (202 Accepted) |
+| `GET` | `/api/export/status` | Export target host and per-status counts (never the token) |
 | `GET` | `/api/recovery` | Return any incomplete (unended) workout for recovery prompt |
 | `POST` | `/api/recovery/{id}/discard` | Discard an incomplete workout |
 | `GET` | `/api/settings` | Get app settings |
@@ -207,7 +215,10 @@ src/
 │   └── fit.py        # FIT file generation
 ├── web/
 │   ├── server.py     # FastAPI app, WebSocket, lifespan
-│   └── routes/       # workouts.py, strava.py, settings.py
+│   └── routes/       # workouts.py, strava.py, settings.py, export.py
+├── export/
+│   ├── http.py       # HTTP export: send on workout end, retry queue
+│   └── payload.py    # JSON body (public contract, docs/export.md)
 ├── strava/
 │   ├── auth.py       # OAuth2, token storage + refresh
 │   └── upload.py     # FIT upload, status polling
@@ -273,6 +284,7 @@ Hardware is never required for development — `MockSerial` and `MockBLEClient` 
 | [`docs/product-plan.md`](docs/product-plan.md) | Goals, integrations, feature spec, non-goals |
 | [`docs/architecture-plan.md`](docs/architecture-plan.md) | Tech stack, data models, event bus, API spec, BLE, S4 protocol, DB schema |
 | [`docs/implementation-plan.md`](docs/implementation-plan.md) | Phase-by-phase task breakdown with exit criteria |
+| [`docs/export.md`](docs/export.md) | HTTP export setup, delivery rules, and the request format for receivers |
 | [`docs/pi-setup.md`](docs/pi-setup.md) | Headless Pi OS flash, SSH, install, Strava OAuth, TICKR MAC |
 | [`docs/hardware-checklist.md`](docs/hardware-checklist.md) | Step-by-step hardware verification (S4, TICKR, FTMS, Peloton) |
 | [`TASKS.md`](TASKS.md) | Work tracker — task status by phase |

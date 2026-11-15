@@ -25,6 +25,17 @@ export const StravaUploadStatus = {
 export type StravaUploadStatus =
   (typeof StravaUploadStatus)[keyof typeof StravaUploadStatus];
 
+export const ExportStatus = {
+  PENDING: "PENDING",
+  SENDING: "SENDING",
+  SENT: "SENT",
+  FAILED: "FAILED",
+  REJECTED: "REJECTED",
+  SKIPPED: "SKIPPED",
+} as const;
+
+export type ExportStatus = (typeof ExportStatus)[keyof typeof ExportStatus];
+
 // --- Real-time data ---
 
 export type RowingMetrics = {
@@ -74,6 +85,10 @@ export type WorkoutRecord = {
   strava_activity_id: number | null;
   strava_error: string | null;
   fit_file_path: string | null;
+  export_status: ExportStatus;
+  export_error: string | null;
+  export_attempts: number;
+  exported_at: string | null;
 };
 
 // --- Stroke record ---
@@ -119,6 +134,16 @@ export type StravaStatus = {
   athlete_name?: string;
   token_expires_at?: number;
   reason?: string;
+};
+
+/** Mirrors src/web/routes/export.py ExportInfo. The token is never sent. */
+export type ExportInfo = {
+  configured: boolean;
+  target_host: string;
+  format: string;
+  auto_send: boolean;
+  include_hr: boolean;
+  counts: Partial<Record<ExportStatus, number>>;
 };
 
 export type AppSettings = {

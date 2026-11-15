@@ -1,7 +1,8 @@
 ﻿/**
  * WorkoutHistory - paginated list of completed workouts.
  *
- * Per-workout Strava status badges, upload/retry/link actions.
+ * Per-workout export (HTTP) and Strava status, with send/upload/retry actions.
+ * Each integration's controls only appear when it is configured.
  * Uses Sheet for mobile slide-up detail panel.
  */
 
@@ -20,6 +21,7 @@ import {
   Zap,
   Flame,
   Heart,
+  Send,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -32,7 +34,8 @@ import {
 } from "@/components/ui/sheet";
 import { formatTime, formatDistance, formatPace, formatNum } from "@/lib/format";
 import * as api from "@/lib/api";
-import type { WorkoutRecord, StravaUploadStatus } from "@/types";
+import { exportStatusClassName, exportStatusLabel } from "@/lib/exportStatus";
+import type { ExportInfo, WorkoutRecord, StravaUploadStatus } from "@/types";
 
 const PAGE_SIZE = 10;
 
@@ -97,6 +100,10 @@ export function WorkoutHistory({ visible }: WorkoutHistoryProps) {
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [selected, setSelected] = useState<WorkoutRecord | null>(null);
+  const [exportInfo, setExportInfo] = useState<ExportInfo | null>(null);
+  const [stravaConnected, setStravaConnected] = useState(false);
+  const [sending, setSending] = useState(false);
+  const exportOn = Boolean(exportInfo?.configured);
 
   const load = useCallback(async (off: number) => {
     try {
@@ -119,6 +126,14 @@ export function WorkoutHistory({ visible }: WorkoutHistoryProps) {
     if (!visible) return;
     let cancelled = false;
     api
+      .getExportStatus()
+      .then((info) => !cancelled && setExportInfo(info))
+      .catch(() => {});
+    api
+      .getStravaStatus()
+      .then((st) => !cancelled && setStravaConnected(st.connected))
+      .catch(() => {});
+    api
       .listWorkouts(PAGE_SIZE, 0)
       .then((data) => {
         if (cancelled) return;
@@ -135,6 +150,25 @@ export function WorkoutHistory({ visible }: WorkoutHistoryProps) {
   const handleUpload = async (id: string) => {
     await api.uploadWorkout(id).catch(() => {});
     load(0);
+  };
+
+  // Send now, then poll until the attempt lands (the backend sends in the background).
+  const handleExport = async (w: WorkoutRecord) => {
+    setSending(true);
+    try {
+      await api.exportWorkout(w.id);
+      for (let i = 0; i < 20; i++) {
+        await new Promise((r) => setTimeout(r, 1000));
+        const fresh = await api.getWorkout(w.id);
+        setSelected((cur) => (cur?.id === w.id ? fresh : cur));
+        if (fresh.export_attempts > w.export_attempts && fresh.export_status !== "SENDING") break;
+      }
+    } catch {
+      // the status row shows the result
+    } finally {
+      setSending(false);
+      load(0);
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -191,12 +225,18 @@ export function WorkoutHistory({ visible }: WorkoutHistoryProps) {
                 </span>
               </div>
             </div>
-            <Badge
-              variant={statusBadgeVariant[w.strava_upload_status]}
-              className={statusBadgeClassName[w.strava_upload_status]}
-            >
-              {w.strava_upload_status}
-            </Badge>
+            {exportOn ? (
+              <Badge variant="outline" className={exportStatusClassName[w.export_status]}>
+                {exportStatusLabel[w.export_status]}
+              </Badge>
+            ) : stravaConnected ? (
+              <Badge
+                variant={statusBadgeVariant[w.strava_upload_status]}
+                className={statusBadgeClassName[w.strava_upload_status]}
+              >
+                {w.strava_upload_status}
+              </Badge>
+            ) : null}
             <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-active:translate-x-0.5" />
           </button>
         ))}
@@ -252,11 +292,36 @@ export function WorkoutHistory({ visible }: WorkoutHistoryProps) {
                       meters rowed
                     </div>
                   </div>
-                  <div className="mb-1 rounded-full border border-[color-mix(in_oklch,var(--color-secondary)_24%,transparent)] bg-[color-mix(in_oklch,var(--color-secondary)_16%,transparent)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-secondary-foreground">
-                    {selected.strava_upload_status}
-                  </div>
                 </div>
               </div>
+
+              {exportOn && (
+                <div className="relative z-10 mt-4 flex items-center gap-3 rounded-[1.35rem] border border-border/80 bg-card/70 p-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                      Export to {exportInfo?.target_host}
+                    </div>
+                    <div className="mt-1 text-sm text-foreground">
+                      {selected.export_status === "SENT" && selected.exported_at
+                        ? `Sent ${new Date(selected.exported_at).toLocaleString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}`
+                        : selected.export_error ??
+                          (selected.export_status === "PENDING"
+                            ? exportInfo?.auto_send
+                              ? "Waiting to send"
+                              : "Auto-send is off"
+                            : "Not sent yet")}
+                    </div>
+                  </div>
+                  <Badge variant="outline" className={exportStatusClassName[selected.export_status]}>
+                    {exportStatusLabel[selected.export_status]}
+                  </Badge>
+                </div>
+              )}
 
               <div className="relative z-10 mt-4 grid grid-cols-2 gap-3">
                 <DetailStat
@@ -302,7 +367,25 @@ export function WorkoutHistory({ visible }: WorkoutHistoryProps) {
               </div>
 
               <div className="relative z-10 mt-4 flex gap-2">
-                {(selected.strava_upload_status === "PENDING" ||
+                {exportOn && (
+                  <Button
+                    className="flex-1"
+                    disabled={sending || selected.export_status === "SENDING"}
+                    onClick={() => handleExport(selected)}
+                  >
+                    {selected.export_status === "SENT" ? (
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                    ) : (
+                      <Send className="mr-2 h-4 w-4" />
+                    )}
+                    {sending || selected.export_status === "SENDING"
+                      ? "Sending..."
+                      : selected.export_status === "SENT"
+                        ? "Send again"
+                        : "Send now"}
+                  </Button>
+                )}
+                {stravaConnected && (selected.strava_upload_status === "PENDING" ||
                   selected.strava_upload_status === "FAILED" ||
                   selected.strava_upload_status === "SKIPPED") && (
                   <Button className="flex-1" onClick={() => handleUpload(selected.id)}>
@@ -316,7 +399,7 @@ export function WorkoutHistory({ visible }: WorkoutHistoryProps) {
                       : "Upload to Strava"}
                   </Button>
                 )}
-                {selected.strava_upload_status === "UPLOADED" &&
+                {stravaConnected && selected.strava_upload_status === "UPLOADED" &&
                   selected.strava_activity_id && (
                     <Button
                       variant="secondary"

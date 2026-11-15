@@ -1,13 +1,13 @@
 /**
- * SettingsScreen - device control, Strava, and system management.
+ * SettingsScreen - device control, workout export, Strava, and system management.
  * Follows BuoyCast design language: dark mode, athletic, high-contrast.
  */
 
 import { useState, useEffect } from "react";
-import { ArrowLeft, Wifi, WifiOff, Heart, HeartOff, UploadCloud, Upload, RefreshCw, RotateCcw, Download, CheckCircle2, AlertCircle, Activity } from "lucide-react";
+import { ArrowLeft, Wifi, WifiOff, Heart, HeartOff, UploadCloud, Upload, RefreshCw, RotateCcw, Download, CheckCircle2, AlertCircle, Activity, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
-import type { SystemStatus, StravaStatus, AppSettings, UpdateInfo } from "@/types";
+import type { SystemStatus, StravaStatus, AppSettings, UpdateInfo, ExportInfo } from "@/types";
 
 type SettingsScreenProps = {
   onBack: () => void;
@@ -53,6 +53,7 @@ function SettingCard({ icon, iconTone, title, subtitle, action, onClick }: Setti
 export function SettingsScreen({ onBack }: SettingsScreenProps) {
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [strava, setStrava] = useState<StravaStatus | null>(null);
+  const [exportInfo, setExportInfo] = useState<ExportInfo | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [logs, setLogs] = useState("");
   const [logsLoading, setLogsLoading] = useState(false);
@@ -64,6 +65,7 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
     fetch("/api/status").then(r => r.json()).then(setStatus);
     fetch("/api/strava/status").then(r => r.json()).then(setStrava);
     fetch("/api/settings").then(r => r.json()).then(setSettings);
+    api.getExportStatus().then(setExportInfo).catch(() => {});
   }, []);
 
   const handleS4Reset = async () => {
@@ -267,6 +269,37 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
                 }
               />
             </div>
+          </section>
+
+          {/* Workout export (HTTP) */}
+          <section>
+            <h2 className="mb-3 text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              Workout Export
+            </h2>
+            <SettingCard
+              icon={<Send className="h-5 w-5" />}
+              iconTone={
+                !exportInfo?.configured
+                  ? "muted"
+                  : (exportInfo.counts.FAILED ?? 0) + (exportInfo.counts.REJECTED ?? 0) > 0
+                    ? "rose"
+                    : "teal"
+              }
+              title={exportInfo?.configured ? exportInfo.target_host : "Not Configured"}
+              subtitle={
+                !exportInfo?.configured
+                  ? "Set [export] url in config.toml"
+                  : [
+                      `${exportInfo.counts.SENT ?? 0} sent`,
+                      (exportInfo.counts.PENDING ?? 0) > 0 && `${exportInfo.counts.PENDING} queued`,
+                      (exportInfo.counts.FAILED ?? 0) > 0 && `${exportInfo.counts.FAILED} retrying`,
+                      (exportInfo.counts.REJECTED ?? 0) > 0 && `${exportInfo.counts.REJECTED} rejected`,
+                      !exportInfo.auto_send && "auto-send off",
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")
+              }
+            />
           </section>
 
           {/* Strava */}

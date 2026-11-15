@@ -7,8 +7,15 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from enum import Enum
 
-from src.models import AppSettings, StravaUploadStatus, StrokeRecord, WorkoutRecord
+from src.models import (
+    AppSettings,
+    ExportStatus,
+    StravaUploadStatus,
+    StrokeRecord,
+    WorkoutRecord,
+)
 from src.storage.db import Database
 
 
@@ -19,8 +26,9 @@ async def insert_workout(db: Database, record: WorkoutRecord) -> None:
             id, started_at, ended_at, total_distance_m, total_strokes,
             elapsed_seconds, avg_pace_s_per_500m, avg_stroke_rate,
             avg_power_watts, avg_heart_rate, max_heart_rate, calories,
-            strava_upload_status, strava_activity_id, strava_error, fit_file_path
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            strava_upload_status, strava_activity_id, strava_error, fit_file_path,
+            export_status, export_error, export_attempts, exported_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             record.id,
             record.started_at.isoformat(),
@@ -38,6 +46,10 @@ async def insert_workout(db: Database, record: WorkoutRecord) -> None:
             record.strava_activity_id,
             record.strava_error,
             record.fit_file_path,
+            record.export_status.value,
+            record.export_error,
+            record.export_attempts,
+            record.exported_at.isoformat() if record.exported_at else None,
         ),
     )
 
@@ -49,7 +61,7 @@ async def update_workout(db: Database, workout_id: str, **fields: object) -> Non
     # Convert enum values to strings for storage
     processed = {}
     for k, v in fields.items():
-        if isinstance(v, StravaUploadStatus):
+        if isinstance(v, Enum):
             processed[k] = v.value
         elif isinstance(v, datetime):
             processed[k] = v.isoformat()
@@ -124,6 +136,36 @@ async def get_incomplete_workout(db: Database) -> WorkoutRecord | None:
     return _row_to_workout(row)
 
 
+async def list_workouts_to_export(
+    db: Database, statuses: tuple[ExportStatus, ...], limit: int = 10
+) -> list[WorkoutRecord]:
+    """Finished workouts whose export status is one of *statuses*, oldest first."""
+    marks = ", ".join("?" * len(statuses))
+    rows = await db.fetch_all(
+        f"SELECT * FROM workouts WHERE ended_at != '' AND ended_at IS NOT NULL "
+        f"AND export_status IN ({marks}) ORDER BY started_at ASC LIMIT ?",
+        tuple(s.value for s in statuses) + (limit,),
+    )
+    return [_row_to_workout(r) for r in rows]
+
+
+async def count_workouts_by_export_status(db: Database) -> dict[str, int]:
+    """Number of finished workouts per export status."""
+    rows = await db.fetch_all(
+        "SELECT export_status, COUNT(*) AS n FROM workouts "
+        "WHERE ended_at != '' AND ended_at IS NOT NULL GROUP BY export_status"
+    )
+    return {r["export_status"]: r["n"] for r in rows}
+
+
+async def reset_stuck_exports(db: Database) -> None:
+    """A send interrupted by a crash or restart is retried, not left SENDING."""
+    await db.execute(
+        "UPDATE workouts SET export_status = ? WHERE export_status = ?",
+        (ExportStatus.FAILED.value, ExportStatus.SENDING.value),
+    )
+
+
 def _row_to_workout(row: dict) -> WorkoutRecord:
     """Convert a database row dict to a WorkoutRecord."""
     return WorkoutRecord(
@@ -143,6 +185,10 @@ def _row_to_workout(row: dict) -> WorkoutRecord:
         strava_activity_id=row["strava_activity_id"],
         strava_error=row["strava_error"],
         fit_file_path=row["fit_file_path"],
+        export_status=ExportStatus(row["export_status"]),
+        export_error=row["export_error"],
+        export_attempts=row["export_attempts"],
+        exported_at=datetime.fromisoformat(row["exported_at"]) if row["exported_at"] else None,
     )
 
 

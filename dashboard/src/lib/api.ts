@@ -8,6 +8,7 @@ import type {
   WorkoutRecord,
   StrokeRecord,
   AppSettings,
+  ExportInfo,
 } from "@/types";
 
 const BASE = "/api";
@@ -98,6 +99,15 @@ export const getStravaStatus = () => fetchJSON<StravaStatus>("/strava/status");
 
 export const disconnectStrava = () =>
   fetchJSON<{ connected: boolean }>("/strava/auth", { method: "DELETE" });
+
+// --- HTTP export ---
+
+export const getExportStatus = () => fetchJSON<ExportInfo>("/export/status");
+
+export const exportWorkout = (id: string) =>
+  fetchJSON<{ status: string; workout_id: string }>(`/workouts/${id}/export`, {
+    method: "POST",
+  });
 
 // --- Settings ---
 

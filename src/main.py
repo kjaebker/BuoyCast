@@ -20,6 +20,7 @@ import uvicorn
 from src.ble.ftms import FTMSBroadcaster
 from src.config import Settings, load_settings
 from src.events import EventBus
+from src.export.http import WorkoutExporter
 from src.logging_config import configure_logging
 from src.merger import DataMerger
 from src.storage.db import Database
@@ -45,6 +46,13 @@ async def run(settings: Settings, simulate: bool = False) -> None:
     merger = DataMerger(event_bus)
     recorder = StrokeRecorder(event_bus, state_machine, db)
     ftms = FTMSBroadcaster(event_bus)
+    exporter = WorkoutExporter(
+        event_bus,
+        db,
+        settings.export,
+        fit_dir=settings.storage.fit_dir,
+        min_distance_m=settings.workout.min_workout_distance_m,
+    )
 
     strava_auth = None
     if settings.strava.client_id and settings.strava.client_secret:
@@ -63,17 +71,19 @@ async def run(settings: Settings, simulate: bool = False) -> None:
         state_machine=state_machine,
         db=db,
         strava_auth=strava_auth,
+        exporter=exporter,
         update_repo=settings.updates.repo,
     )
     app_state = app.state.app_state
 
     # Track components for cleanup
-    components = [merger, recorder, ftms]
+    components = [merger, recorder, ftms, exporter]
 
     # Start core components (each manages its own background tasks)
     await merger.start()
     await recorder.start()
     await ftms.start()
+    await exporter.start()
 
     # Start S4 reader
     s4_reader = None

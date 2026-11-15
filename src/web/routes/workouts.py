@@ -8,7 +8,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from src.models import StravaUploadStatus, WorkoutState
+from src.models import ExportStatus, StravaUploadStatus, WorkoutState
 from src.storage.queries import (
     delete_workout,
     get_app_settings,
@@ -237,5 +237,7 @@ async def discard_recovery_workout(request: Request, workout_id: str):
         workout_id,
         ended_at=datetime.now(UTC),
         strava_upload_status=StravaUploadStatus.SKIPPED,
+        export_status=ExportStatus.SKIPPED,
+        export_error="Discarded after an unexpected shutdown",
     )
     return {"status": "discarded", "workout_id": workout_id}

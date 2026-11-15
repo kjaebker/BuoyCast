@@ -22,6 +22,10 @@ class EventType(str, Enum):
     MERGED_METRICS = "merged_metrics"
     IDLE_WARNING = "idle_warning"
     STRAVA_UPLOAD_STATUS = "strava_upload_status"
+    # The recorder has written a finished workout's summary; data: workout_id (str)
+    WORKOUT_SAVED = "workout_saved"
+    # An HTTP export attempt changed a workout's export status; data: dict
+    EXPORT_STATUS = "export_status"
     # Pushed by the S4 the instant each drive starts/ends (SS/SE); data: StrokeEvent
     STROKE = "stroke"
 

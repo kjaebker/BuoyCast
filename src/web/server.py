@@ -20,6 +20,7 @@ from starlette.requests import Request
 from src.events import EventBus, EventType
 from src.models import RowingMetrics, StrokeEvent, WorkoutState
 from src.updates import UPDATE_HELPER, UpdateInfo, check_for_update, current_version
+from src.web.routes.export import router as export_router
 from src.web.routes.settings import router as settings_router
 from src.web.routes.strava import router as strava_router
 from src.web.routes.workouts import router as workouts_router
@@ -66,6 +67,7 @@ class AppState:
         self.start_time: float = time.monotonic()
         self.last_metrics_ts: datetime | None = None
         self.strava_auth: Any = None
+        self.exporter: Any = None
         self.ws_clients: set[WebSocket] = set()
 
 
@@ -74,6 +76,7 @@ def create_app(
     state_machine: WorkoutStateMachine | None = None,
     db: Any = None,
     strava_auth: Any = None,
+    exporter: Any = None,
     update_repo: str = "kjaebker/BuoyCast",
     dist_dir: Path | None = None,
 ) -> FastAPI:
@@ -89,6 +92,7 @@ def create_app(
     app_state.state_machine = state_machine
     app_state.db = db
     app_state.strava_auth = strava_auth
+    app_state.exporter = exporter
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -134,6 +138,7 @@ def create_app(
     app.include_router(workouts_router, prefix="/api")
     app.include_router(strava_router, prefix="/api")
     app.include_router(settings_router, prefix="/api")
+    app.include_router(export_router, prefix="/api")
 
     # Static file serving for the dashboard SPA
     _dist = (dist_dir or Path(__file__).parent.parent.parent / "dashboard" / "dist").resolve()
@@ -334,6 +339,7 @@ async def _ws_broadcast_loop(app_state: AppState) -> None:
         EventType.TICKR_CONNECTED,
         EventType.TICKR_DISCONNECTED,
         EventType.STROKE,
+        EventType.EXPORT_STATUS,
     ]
 
     source_queues = [bus.subscribe(et) for et in event_types]

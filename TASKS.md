@@ -48,3 +48,4 @@ Add new tasks here as they arise.
 | E18 | Backend: Fix workout state management — audit state machine transitions, resolve 409 Conflict errors when starting workouts after prior sessions | done | 2026-03-19 |
 | E19 | Frontend: Settings — add workout state display with force-reset, fix TICKR connected tracking | done | 2026-03-19 |
 | E20 | Performance review: audit CPU/memory/event-bus/rendering efficiency for Pi Zero 2W | done | 2026-03-19 |
+| E21 | Backend + dashboard: generic HTTP export — POST finished workouts (JSON or FIT) to a configured URL with bearer token, retry queue in SQLite, manual send from history | done | 2026-11-14 |

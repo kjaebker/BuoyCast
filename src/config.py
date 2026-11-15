@@ -1,7 +1,7 @@
 """Application configuration via pydantic-settings, loaded from config.toml."""
 
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal
 
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict, TomlConfigSettingsSource
@@ -45,6 +45,22 @@ class StravaSettings(BaseModel):
     client_secret: str = ""
 
 
+class ExportSettings(BaseModel):
+    """Send finished workouts to your own HTTP endpoint (see docs/export.md)."""
+
+    url: str = ""  # empty = export off
+    token: str = ""  # sent as "Authorization: Bearer <token>"; empty = no header
+    format: Literal["json", "fit"] = "json"
+    auto_send: bool = True  # send each workout when it ends (otherwise only manually)
+    include_hr: bool = True
+    retry_interval_s: float = 300.0
+    timeout_s: float = 30.0
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.url)
+
+
 class StorageSettings(BaseModel):
     db_path: str = "data/buoycast.db"
     fit_dir: str = "data/fit"
@@ -75,6 +91,7 @@ class Settings(BaseSettings):
     heart_rate: HeartRateSettings = HeartRateSettings()
     workout: WorkoutSettings = WorkoutSettings()
     strava: StravaSettings = StravaSettings()
+    export: ExportSettings = ExportSettings()
     storage: StorageSettings = StorageSettings()
     logging: LoggingSettings = LoggingSettings()
     updates: UpdateSettings = UpdateSettings()

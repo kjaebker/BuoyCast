@@ -170,6 +170,24 @@ async def test_final_flush_on_end(event_bus, sm, recorder, db):
         await recorder.stop()
 
 
+async def test_workout_saved_emitted_after_summary(event_bus, sm, recorder, db):
+    """WORKOUT_SAVED fires once the summary is in SQLite, carrying the workout ID."""
+    saved = event_bus.subscribe(EventType.WORKOUT_SAVED)
+    await recorder.start()
+    try:
+        await _start_workout(sm, recorder)
+        workout_id = recorder.workout_id
+        await _emit_and_yield(event_bus, _metrics(distance_m=50.0))
+        await _end_workout(sm)
+
+        event = saved.get_nowait()
+        assert event.data == workout_id
+        workout = await get_workout(db, workout_id)
+        assert workout.ended_at is not None
+    finally:
+        await recorder.stop()
+
+
 # --- Summary stats computed correctly ---
 
 

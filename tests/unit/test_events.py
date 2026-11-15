@@ -22,6 +22,8 @@ class TestEventType:
             "idle_warning",
             "strava_upload_status",
             "stroke",
+            "workout_saved",
+            "export_status",
         }
         assert {e.value for e in EventType} == expected
 

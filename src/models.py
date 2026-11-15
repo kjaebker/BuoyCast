@@ -26,6 +26,17 @@ class StravaUploadStatus(str, Enum):
     SKIPPED = "SKIPPED"
 
 
+class ExportStatus(str, Enum):
+    """HTTP export lifecycle (see docs/export.md)."""
+
+    PENDING = "PENDING"  # waiting to be sent (or export not configured yet)
+    SENDING = "SENDING"
+    SENT = "SENT"
+    FAILED = "FAILED"  # network error / 408 / 429 / 5xx: retried automatically
+    REJECTED = "REJECTED"  # other 4xx: not retried until sent manually
+    SKIPPED = "SKIPPED"  # not sent (too short, discarded, or recorded before export existed)
+
+
 class StrokePhase(str, Enum):
     """Which part of the stroke just began."""
 
@@ -98,6 +109,10 @@ class WorkoutRecord(BaseModel):
     strava_activity_id: int | None = None
     strava_error: str | None = None
     fit_file_path: str | None = None
+    export_status: ExportStatus = ExportStatus.PENDING
+    export_error: str | None = None
+    export_attempts: int = Field(default=0, ge=0)
+    exported_at: datetime | None = None
 
 
 class AppSettings(BaseModel):

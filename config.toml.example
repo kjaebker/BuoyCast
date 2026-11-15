@@ -26,6 +26,15 @@ min_workout_distance_m = 100   # discard workouts under 100m
 client_id = ""                 # from your Strava API app
 client_secret = ""
 
+[export]
+# Send each finished workout to your own HTTP endpoint (see docs/export.md).
+url = ""                       # e.g. "https://example.com/ingest/buoycast"; "" = off
+token = ""                     # sent as "Authorization: Bearer <token>"; "" = no header
+format = "json"                # "json" (summary + per-second samples) or "fit"
+auto_send = true               # false = only send from the workout history screen
+include_hr = true
+retry_interval_s = 300         # how often failed sends are retried
+
 [storage]
 db_path = "data/buoycast.db"
 fit_dir = "data/fit"

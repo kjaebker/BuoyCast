@@ -88,6 +88,19 @@ MIGRATIONS: list[tuple[int, str, str]] = [
         VALUES (1, 1, datetime('now'));
         """,
     ),
+    (
+        4,
+        "http export status",
+        # The column default only fills rows that exist now: workouts recorded
+        # before export existed are SKIPPED (send them by hand from history).
+        # New rows are inserted with an explicit PENDING.
+        """
+        ALTER TABLE workouts ADD COLUMN export_status TEXT NOT NULL DEFAULT 'SKIPPED';
+        ALTER TABLE workouts ADD COLUMN export_error TEXT;
+        ALTER TABLE workouts ADD COLUMN export_attempts INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE workouts ADD COLUMN exported_at TEXT;
+        """,
+    ),
 ]
 
 
