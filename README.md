@@ -291,6 +291,12 @@ Hardware is never required for development — `MockSerial` and `MockBLEClient` 
 
 ---
 
+## Security
+
+BuoyCast has **no login**: anyone on your network can open the dashboard and control the rower, including rebooting the Pi and deleting workouts. Keep it on a home network you trust and don't port-forward it to the internet. Other websites can't use your browser to send it commands: cross-site requests and DNS-rebinding hosts are rejected. See [SECURITY.md](SECURITY.md) for details and how to report a vulnerability.
+
+---
+
 ## Constraints
 
 Runs on Raspberry Pi Zero 2W: CPU < 50% average, RAM < 200 MB during an active workout. Four top-level coroutines (`s4_reader`, `tickr_reader`, `ftms_broadcaster`, `web_server`) are isolated — a crash in the web server does not affect the BLE broadcast.

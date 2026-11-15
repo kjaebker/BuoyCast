@@ -50,3 +50,4 @@ Add new tasks here as they arise.
 | E20 | Performance review: audit CPU/memory/event-bus/rendering efficiency for Pi Zero 2W | done | 2026-03-19 |
 | E21 | Backend + dashboard: generic HTTP export — POST finished workouts (JSON or FIT) to a configured URL with bearer token, retry queue in SQLite, manual send from history | done | 2026-11-14 |
 | E22 | Docs: receiver guide for HTTP export (checklist, status codes, testing) + published JSON Schema kept in sync by test | done | 2026-11-14 |
+| E23 | Security: drop open CORS, reject cross-site writes/WebSockets and DNS-rebinding hosts; SECURITY.md + README note | done | 2026-11-14 |

@@ -11,6 +11,9 @@ class ServerSettings(BaseModel):
     host: str = "0.0.0.0"
     port: int = 8080
     mdns_name: str = "waterrower"
+    # Extra host names the dashboard may be reached by, beyond IP addresses,
+    # *.local and single-label names (e.g. a reverse proxy's domain).
+    allowed_hosts: list[str] = []
 
 
 class S4Settings(BaseModel):

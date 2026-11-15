@@ -73,6 +73,7 @@ async def run(settings: Settings, simulate: bool = False) -> None:
         strava_auth=strava_auth,
         exporter=exporter,
         update_repo=settings.updates.repo,
+        allowed_hosts=settings.server.allowed_hosts,
     )
     app_state = app.state.app_state
 

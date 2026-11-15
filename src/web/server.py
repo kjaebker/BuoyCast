@@ -6,13 +6,13 @@ import asyncio
 import json as _json
 import logging
 import time
+from collections.abc import Iterable
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.requests import Request
@@ -20,6 +20,7 @@ from starlette.requests import Request
 from src.events import EventBus, EventType
 from src.models import RowingMetrics, StrokeEvent, WorkoutState
 from src.updates import UPDATE_HELPER, UpdateInfo, check_for_update, current_version
+from src.web.guard import RequestGuard
 from src.web.routes.export import router as export_router
 from src.web.routes.settings import router as settings_router
 from src.web.routes.strava import router as strava_router
@@ -79,6 +80,7 @@ def create_app(
     exporter: Any = None,
     update_repo: str = "kjaebker/BuoyCast",
     dist_dir: Path | None = None,
+    allowed_hosts: Iterable[str] = (),
 ) -> FastAPI:
     """Create and configure the FastAPI application.
 
@@ -117,14 +119,10 @@ def create_app(
     # Store state on the app
     app.state.app_state = app_state
 
-    # CORS for development (dashboard on different port)
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    # No CORS: the dashboard is served from this app (and the Vite dev server
+    # proxies to it), so no other site needs access. The guard rejects
+    # cross-site commands and DNS-rebinding hosts; see src/web/guard.py.
+    app.add_middleware(RequestGuard, allowed_hosts=allowed_hosts)
 
     # Global exception handler for InvalidTransitionError -> 409
     @app.exception_handler(InvalidTransitionError)

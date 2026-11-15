@@ -2,6 +2,9 @@
 host = "0.0.0.0"
 port = 8080
 mdns_name = "buoycast"         # accessible at buoycast.local
+# IP addresses, *.local and single-label names always work. List any other
+# host name you open the dashboard by (e.g. a reverse proxy's domain).
+allowed_hosts = []
 
 [s4]
 port = "/dev/ttyACM0"          # USB serial port for WaterRower S4

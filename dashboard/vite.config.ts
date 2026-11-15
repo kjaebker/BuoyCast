@@ -60,11 +60,14 @@ export default defineConfig({
     },
   },
   server: {
+    // Keep the browser's Host header (changeOrigin: false) so the backend's
+    // cross-site guard sees Origin and Host agree (src/web/guard.py).
     proxy: {
-      "/api": "http://localhost:8080",
+      "/api": { target: "http://localhost:8080", changeOrigin: false },
       "/ws": {
         target: "ws://localhost:8080",
         ws: true,
+        changeOrigin: false,
       },
     },
   },
