@@ -133,7 +133,10 @@ class TestMergerTickrDisconnected:
         await merger.start()
         q_out = event_bus.subscribe(EventType.MERGED_METRICS)
 
-        # S4 metrics only, TICKR never connected
+        # S4 metrics only, TICKR never connected (during a workout started
+        # from a freshly reset monitor, so counters pass through unchanged)
+        await event_bus.emit(EventType.WORKOUT_STARTED)
+        await asyncio.sleep(0.01)
         await event_bus.emit(EventType.METRICS_UPDATE, data=_s4_metrics(distance_m=1000.0))
         await asyncio.sleep(0.05)
 

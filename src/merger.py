@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 
 from src.events import EventBus, EventType
 from src.models import RowingMetrics
+from src.workout.counters import WorkoutCounters
 
 logger = logging.getLogger(__name__)
 
@@ -42,11 +43,18 @@ class DataMerger:
         self._latest_hr: RowingMetrics | None = None
         self._hr_timestamp: datetime | None = None
 
+        # Rebases the S4's cumulative counters onto the current workout.
+        self._counters = WorkoutCounters()
+        self._lifecycle_task: asyncio.Task[None] | None = None
+
     async def start(self) -> None:
-        """Start listening for metrics events."""
+        """Start listening for metrics and workout lifecycle events."""
         self._running = True
         self._queue = self._bus.subscribe(EventType.METRICS_UPDATE)
+        self._started_q = self._bus.subscribe(EventType.WORKOUT_STARTED)
+        self._ended_q = self._bus.subscribe(EventType.WORKOUT_ENDED)
         self._task = asyncio.create_task(self._run_loop())
+        self._lifecycle_task = asyncio.create_task(self._lifecycle_loop())
 
     async def stop(self) -> None:
         """Stop the merger."""
@@ -58,8 +66,34 @@ class DataMerger:
             except asyncio.CancelledError:
                 pass
             self._task = None
+        if self._lifecycle_task:
+            self._lifecycle_task.cancel()
+            try:
+                await self._lifecycle_task
+            except asyncio.CancelledError:
+                pass
+            self._lifecycle_task = None
         if hasattr(self, "_queue"):
             self._bus.unsubscribe(EventType.METRICS_UPDATE, self._queue)
+            self._bus.unsubscribe(EventType.WORKOUT_STARTED, self._started_q)
+            self._bus.unsubscribe(EventType.WORKOUT_ENDED, self._ended_q)
+
+    async def _lifecycle_loop(self) -> None:
+        """Track workout start/end so counters read relative to the workout."""
+        started = asyncio.ensure_future(self._started_q.get())
+        ended = asyncio.ensure_future(self._ended_q.get())
+        try:
+            while self._running:
+                done, _ = await asyncio.wait({started, ended}, return_when=asyncio.FIRST_COMPLETED)
+                if started in done:
+                    self._counters.start_workout()
+                    started = asyncio.ensure_future(self._started_q.get())
+                if ended in done:
+                    self._counters.end_workout()
+                    ended = asyncio.ensure_future(self._ended_q.get())
+        finally:
+            started.cancel()
+            ended.cancel()
 
     async def _run_loop(self) -> None:
         """Process incoming metrics events."""
@@ -77,8 +111,8 @@ class DataMerger:
                 self._latest_hr = metrics
                 self._hr_timestamp = metrics.timestamp
             else:
-                # S4 source — merge and publish
-                self._latest_s4 = metrics
+                # S4 source — rebase counters, merge and publish
+                self._latest_s4 = self._counters.apply(metrics)
                 merged = self._merge()
                 await self._bus.emit(EventType.MERGED_METRICS, data=merged)
 
