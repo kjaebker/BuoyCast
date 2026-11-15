@@ -1,37 +1,14 @@
 # BuoyCast — Claude Code Instructions
 
-Read this before writing any code. For full specs, see `docs/`.
-
----
-
-## Task Tracking (TASKS.md)
-
-All work is tracked in `TASKS.md`. Follow this protocol every time.
-
-**Before starting any task:**
-1. Read `TASKS.md` in full
-2. Find an `available` task that fits your scope
-3. Set its status to `in_progress`
-4. Only then start coding
-
-**When done:**
-- Run the phase's exit criteria tests before marking done
-- Never mark done if tests are failing
-- Set status to `done`
-- Commit after each task (not at the end of a phase)
-
-**If blocked:** set status to `blocked` and add a note explaining why.
-
-**Never:**
-- Start a task already marked `in_progress` or `done`
-- Skip updating TASKS.md — do it at start AND end of every task
+Guidance for AI coding agents working on this repo. Human contributors: see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
 ## Workflow
-- Commit messages follow conventional commits: `feat:`, `fix:`, `chore:`, `test:`, etc.
+- Read [CONTRIBUTING.md](CONTRIBUTING.md) first; it applies to AI agents too.
+- Commit messages follow conventional commits: `feat:`, `fix:`, `chore:`, `test:`, `docs:`, etc.
 - Run the full test suite before committing: `pytest tests/ -q`
-- Follow the phases in `docs/implementation-plan.md` — do not skip ahead
+- User-facing changes get a line under "Unreleased" in [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
@@ -80,7 +57,7 @@ In a second terminal, start the dashboard dev server:
 cd dashboard && npm run dev
 ```
 
-Open `http://localhost:5173` (Vite proxy forwards API calls to the backend on port 8000).
+Open `http://localhost:5173` (the Vite proxy forwards `/api` and `/ws` to the backend on port 8080, keeping the browser's Host header so the cross-site guard accepts it).
 
 The simulator generates a realistic ~12-minute workout:
 - **0–1 min** — warmup: stroke rate 18–20 SPM, HR 95→120 BPM
@@ -102,9 +79,10 @@ Both S4 and TICKR connect events are emitted at startup (~0.5 s delay), so the d
 
 | Doc | When to read |
 |---|---|
-| `docs/product-plan.md` | Understand what BuoyCast is and what it must do |
-| `docs/architecture-plan.md` | Tech stack, data models, event bus, API spec, BLE, S4 protocol, DB schema |
-| `docs/implementation-plan.md` | Phase-by-phase task breakdown with exit criteria |
+| `docs/architecture-plan.md` | Original design: data models, event bus, API, BLE, DB schema |
+| `docs/s4-protocol.md` | WaterRower S4 serial protocol |
+| `docs/export.md` | HTTP export contract (public; change it deliberately) |
+| `SECURITY.md` | Threat model: no login, cross-site and DNS-rebinding guard |
 
 ---
 
@@ -126,10 +104,15 @@ src/
 ├── workout/
 │   ├── state.py      # WorkoutStateMachine
 │   ├── recorder.py   # Buffers strokes, flushes to SQLite every 10s
+│   ├── counters.py   # Rebases S4 counters to the workout
 │   └── fit.py        # FIT file generation
 ├── web/
 │   ├── server.py     # FastAPI app, WebSocket, lifespan
-│   └── routes/       # workouts.py, config.py
+│   ├── guard.py      # Blocks cross-site commands + DNS rebinding (see SECURITY.md)
+│   └── routes/       # workouts.py, settings.py, strava.py, export.py
+├── export/
+│   ├── http.py       # HTTP export: send on WORKOUT_SAVED, retry queue
+│   └── payload.py    # JSON body; public contract in docs/export.md
 ├── strava/
 │   ├── auth.py       # OAuth2, token storage + refresh
 │   └── upload.py     # FIT upload, status polling
@@ -193,7 +176,6 @@ tests/
 - Integration tests use an in-memory SQLite DB (`:memory:`)
 - Strava tests use `httpx` mock transport — no real API calls
 - Make timing configurable in readers/components so tests use fast intervals (not production timeouts)
-- Required test files are listed in `docs/implementation-plan.md` under each phase
 
 ---
 

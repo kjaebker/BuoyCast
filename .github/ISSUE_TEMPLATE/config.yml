@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/kjaebker/BuoyCast/security/advisories/new
+    about: Please report security problems privately.
+  - name: Setup help
+    url: https://github.com/kjaebker/BuoyCast/blob/main/docs/setup.md#troubleshooting
+    about: Check the setup guide's troubleshooting section first.

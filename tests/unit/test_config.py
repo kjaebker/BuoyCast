@@ -20,7 +20,7 @@ class TestSubSettings:
         s = ServerSettings()
         assert s.host == "0.0.0.0"
         assert s.port == 8080
-        assert s.mdns_name == "waterrower"
+        assert s.mdns_name == "buoycast"
 
     def test_s4_defaults(self):
         s = S4Settings()

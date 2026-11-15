@@ -5,8 +5,8 @@
 #   deploy/package.sh --skip-dashboard-build   # reuse an existing dashboard/dist
 #
 # Install it on a Pi for testing without publishing a release:
-#   scp release/buoycast-*.tar.gz deploy/install.sh deploy/update.sh pi@buoycast.local:
-#   ssh pi@buoycast.local 'sudo bash install.sh --tarball buoycast-*.tar.gz'
+#   scp release/buoycast-*.tar.gz deploy/install.sh deploy/update.sh <you>@buoycast.local:
+#   ssh <you>@buoycast.local 'sudo bash install.sh --tarball buoycast-*.tar.gz'
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

@@ -1,0 +1,50 @@
+name: Bug report
+description: Something isn't working
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! For security problems, please use
+        **Security → Report a vulnerability** instead of a public issue.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: BuoyCast version
+      description: Settings → Software Update shows it.
+      placeholder: v0.3.0
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Install / update
+        - WaterRower S4 connection
+        - Heart rate strap
+        - Peloton / FTMS Bluetooth
+        - Dashboard
+        - Strava upload
+        - HTTP export
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: Hardware and OS
+      placeholder: Pi Zero 2W, Raspberry Pi OS Lite 64-bit (Bookworm), WaterRower S4 v2.x, Wahoo TICKR
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: "Output of `journalctl -u buoycast -n 100 --no-pager` around the time of the problem."
+      render: text

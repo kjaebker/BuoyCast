@@ -1,158 +1,108 @@
 # BuoyCast
 
-A self-hosted Raspberry Pi bridge for the WaterRower S4. Reads the rower's USB serial data, broadcasts it over Bluetooth LE (FTMS) to a Peloton, captures heart rate from a Wahoo TICKR, serves a live PWA dashboard, and sends finished workouts to your own HTTP endpoint and/or Strava.
+**A live rowing dashboard for the WaterRower S4, running on a Raspberry Pi.**
 
----
+BuoyCast plugs into your WaterRower's S4 monitor over USB and turns your phone
+or tablet into a big, glanceable workout screen: pace, stroke rate, power and
+heart rate, with a little sculler that rows in time with your real strokes.
+Every workout is saved on the Pi, and can be sent to Strava or to your own
+server when you finish.
 
-## What it does
+<p align="center">
+  <img src="docs/screenshots/live-tablet.png" alt="BuoyCast on a tablet during a workout: an animated sculler on a lake, pace, stroke rate, power, time, distance, calories and a stroke-rate and heart-rate chart" width="100%">
+</p>
+<p align="center">
+  <img src="docs/screenshots/live-phone.png" alt="BuoyCast on a phone during a workout" width="32%">
+  &nbsp;
+  <img src="docs/screenshots/history-phone.png" alt="A saved workout in BuoyCast's history, showing it was sent to an export endpoint" width="32%">
+</p>
 
-```
-WaterRower S4  ──USB──►  Pi Zero 2W  ──BLE FTMS──►  Peloton
-                              │
-                        ◄─ BLE HRS ─  Wahoo TICKR
-                              │
-                         SQLite DB
-                         FIT files
-                              │
-                         REST / WS ──►  Dashboard (PWA)
-                              │
-                         HTTP export ──►  your endpoint (JSON / FIT)
-                         Strava API  ──►  Strava
-```
+## Features
 
-| Feature | Detail |
-|---|---|
-| S4 serial reader | USB CDC at 19200 baud, ~1 Hz poll, auto-reconnect |
-| FTMS broadcast | BLE peripheral advertising Rower Data (0x2AD1) to Peloton / WaterRower app |
-| Heart rate | Wahoo TICKR via BLE HRS; BPM + RR intervals merged into the metrics stream |
-| Dashboard | React PWA at `http://buoycast.local:8080`; optimised for iPhone + iPad |
-| WebSocket | Live metrics pushed over `/ws/live`; no polling |
-| Workout recording | Stroke-level data flushed to SQLite every 10 s; survives unexpected shutdown |
-| FIT export | `Sport.ROWING / SubSport.INDOOR_ROWING` with full HR time series |
-| HTTP export | POST each finished workout (JSON or FIT) to your own endpoint; retried until delivered ([docs/export.md](docs/export.md)) |
-| Strava upload | Manual OAuth2 flow (one-time); FIT upload via Strava API v3 |
-| Smart detection | Auto-pause after 30 s idle; auto-resume on stroke; prompts to start/end |
-| Wake lock | Screen stays on during active workout (iOS 16.4+ / Android Chrome) |
+- **Live dashboard** for iPhone, iPad and Android. Add it to your home screen
+  and it runs full screen and keeps the display awake. Big numbers you can read
+  mid-stroke.
+- **Heart rate** from a Bluetooth chest strap (tested with the Wahoo TICKR),
+  shown live and charted against stroke rate.
+- **Hands-free workouts:** notices when you start rowing and offers to start
+  a workout, pauses when you stop, resumes on your next stroke, and offers
+  to end after a long break.
+- **Workout history** on the Pi, with every second of data. Workouts survive
+  power cuts.
+- **Send workouts anywhere:** POST each finished workout to your own endpoint
+  as JSON or a FIT file ([docs/export.md](docs/export.md)), and/or upload to
+  Strava.
+- **Bluetooth FTMS broadcast** of your rowing data, for apps that accept
+  third-party rowers. Peloton pairing is still experimental (see below).
+- **One-line install and in-app updates** from GitHub Releases, with
+  automatic rollback if an update fails.
 
----
+## What you need
 
-## Hardware
+- A WaterRower with the **S4** monitor
+- A **Raspberry Pi Zero 2W** (or another 64-bit Pi with Bluetooth), a microSD
+  card, a micro-USB power supply, and a micro-USB OTG cable to connect the
+  S4
+- Optional: a Bluetooth heart-rate strap
 
-| Item | Notes |
-|---|---|
-| Raspberry Pi Zero 2W | Single BT chip; supports central + peripheral simultaneously |
-| microSD ≥ 16 GB (A1) | Samsung Endurance or SanDisk Max Endurance recommended |
-| USB OTG cable (micro-USB → USB-A) | Connects to the S4; use the OTG port, not the power port |
-| 5 V / 2.5 A USB-C supply | Via the dedicated PWR micro-USB port |
-| Wahoo TICKR | Optional — workouts proceed without HR |
-| Peloton | Optional — FTMS BLE client |
+## Install
 
----
-
-## Quick start
-
-Full step-by-step instructions are in [`docs/pi-setup.md`](docs/pi-setup.md).
+Flash **Raspberry Pi OS Lite (64-bit)** with hostname `buoycast`, SSH in, and
+run:
 
 ```bash
-# 1. Flash Raspberry Pi OS Lite (64-bit) with Raspberry Pi Imager
-#    Set hostname: waterrower  |  Enable SSH  |  Configure Wi-Fi
-
-# 2. SSH in after first boot
-ssh pi@waterrower.local
-
-# 3. Clone and install
-git clone git@github.com:kjaebker/BuoyCast.git
-cd BuoyCast
-sudo bash install.sh
-
-# 4. Edit config (TICKR MAC + Strava credentials)
-nano /opt/buoycast/config.toml
-
-# 5. Strava OAuth — one-time from a browser
-# http://buoycast.local:8080/api/strava/auth
-
-# 6. Verify
-curl http://buoycast.local:8080/api/status
+curl -fsSL https://github.com/kjaebker/BuoyCast/releases/latest/download/install.sh | sudo bash
 ```
 
----
+Plug the S4 into the Pi's USB port and open **http://buoycast.local:8080**
+on your phone.
 
-## Daily use
+The **[setup guide](docs/setup.md)** walks through every step, including the
+heart-rate strap, Strava, updates and troubleshooting.
 
-1. Pi is always on — no action needed
-2. Put on TICKR strap — Pi connects automatically
-3. Open `http://waterrower.local:8080` on your iPhone or iPad
-4. Tap **Start Workout**
-5. Row
-6. Tap **End Workout** → review summary → optionally upload to Strava
+## Using it
 
----
+1. Put on your heart-rate strap, if you have one. BuoyCast connects to it
+   automatically.
+2. Open the dashboard and start rowing. BuoyCast offers to start a workout,
+   or you can tap **Start Workout**.
+3. Stop for 30 seconds and the workout pauses. Take a stroke and it resumes.
+4. Tap **End** when you're done. The workout is saved and, if you've set it
+   up, sent to Strava or your export endpoint.
 
-## Workout state machine
+Past workouts are under **Workout History**. Device status, logs and updates
+are under **Settings** (the gear icon).
 
-```
-IDLE
- │  [Start / rowing detected]
-ACTIVE
- │  [Pause / 30 s no strokes]     PAUSED
- │        ◄──────────────────────────┘
- │         [Resume / stroke detected]
- │  [End / 5 min idle]
-SUMMARY
- │  [Upload / Skip]
-IDLE
-```
+## Integrations
 
----
+| | Status | How |
+|---|---|---|
+| **Your own server** | ✅ | `[export]` in the config. See [docs/export.md](docs/export.md) for setup and the request format. |
+| **Strava** | ✅ | Needs your own Strava API application. See the [setup guide](docs/setup.md#strava). |
+| **Heart-rate straps** | ✅ | Standard Bluetooth heart-rate profile. Tested with the Wahoo TICKR. |
+| **Peloton app** | 🧪 Experimental | BuoyCast broadcasts as an FTMS rower, but doesn't show up in the Peloton app yet. Help debugging is welcome: [hardware checklist §3](docs/hardware-checklist.md#3--ftms-ble-broadcast-to-peloton). |
 
-## Configuration
+## Security
 
-`/opt/buoycast/config.toml` — template at [`config.toml.example`](config.toml.example):
+BuoyCast has **no login**: anyone on your network can open the dashboard and
+control the rower, including rebooting the Pi and deleting workouts. Keep it
+on a home network you trust, and don't port-forward it to the internet.
+Other websites can't use your browser to send it commands: cross-site
+requests and DNS-rebinding hosts are rejected. See [SECURITY.md](SECURITY.md)
+for details and for how to report a vulnerability.
 
-```toml
-[server]
-host = "0.0.0.0"
-port = 8080
-mdns_name = "buoycast"         # → http://buoycast.local:8080
+## Contributing
 
-[s4]
-port = "/dev/ttyACM0"
-baud_rate = 19200
-poll_interval_hz = 1.0
-reconnect_delay_s = 5
+You don't need a rower: `python -m src.main --simulate` runs a realistic
+fake workout. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, checks and
+conventions, and [CHANGELOG.md](CHANGELOG.md) for what's changed.
 
-[heart_rate]
-enabled = true
-device_mac = "A4:34:F1:XX:XX:XX"   # your TICKR's MAC address
-device_name = ""               # e.g. "TICKR XXXX"
-required = false               # workout proceeds without HR if unavailable
+<details>
+<summary><b>HTTP API</b></summary>
 
-[strava]
-client_id     = ""
-client_secret = ""
-
-[export]                       # optional, see docs/export.md
-url   = ""                     # e.g. "https://example.com/ingest/buoycast"
-token = ""                     # sent as a bearer token
-
-[workout]
-auto_pause_idle_s = 30
-auto_end_idle_s   = 300
-min_workout_distance_m = 100   # discard workouts under 100m
-
-[storage]
-db_path = "data/buoycast.db"
-fit_dir = "data/fit"
-
-[logging]
-level = "INFO"                 # DEBUG | INFO | WARNING | ERROR
-log_dir = "logs"
-json_logs = false
-```
-
----
-
-## API
+The dashboard talks to a small REST + WebSocket API, which you can also use
+from scripts on your network. Live metrics stream over the WebSocket at
+`/ws/live`.
 
 | Method | Path | Description |
 |---|---|---|
@@ -166,6 +116,7 @@ json_logs = false
 | `POST` | `/api/workout/resume` | Resume |
 | `POST` | `/api/workout/end` | End |
 | `POST` | `/api/workout/reset` | Reset from SUMMARY back to IDLE |
+| `POST` | `/api/workout/force-reset` | Force IDLE from any state (ends an active workout first) |
 | `POST` | `/api/workouts/{id}/upload` | Queue Strava upload (202 Accepted) |
 | `POST` | `/api/workouts/{id}/skip` | Mark SKIPPED |
 | `POST` | `/api/workouts/{id}/export` | Send to the export endpoint now (202 Accepted) |
@@ -185,118 +136,24 @@ json_logs = false
 | `POST` | `/api/hr/disconnect` | Pause TICKR reading |
 | `POST` | `/api/system/restart` | Reboot the Raspberry Pi |
 | `POST` | `/api/system/restart-service` | Restart the buoycast systemd service |
-| `GET` | `/api/system/update/check` | Check if a new version is available on origin/main |
-| `POST` | `/api/system/update` | Pull latest code and restart the service |
+| `GET` | `/api/system/update/check` | Check GitHub Releases for a newer version |
+| `POST` | `/api/system/update` | Install the latest release (rolls back if it fails to start) |
 | `GET` | `/api/logs` | Recent journald log lines (default: last 100) |
 | `WS` | `/ws/live` | Live metrics + state events |
 
----
-
-## Source layout
-
-```
-src/
-├── main.py           # Entry point — wires all async tasks
-├── config.py         # pydantic-settings Settings
-├── models.py         # RowingMetrics, WorkoutRecord, StrokeRecord (Pydantic v2)
-├── events.py         # EventBus + EventType enum
-├── merger.py         # Merges S4 + TICKR → MERGED_METRICS
-├── logging_config.py # structlog + rotating file handler setup
-├── s4/
-│   ├── protocol.py   # Memory addresses, command constants, byte parsers
-│   └── reader.py     # Async serial reader, ~1 Hz poll loop
-├── ble/
-│   ├── ftms.py       # FTMS Rower peripheral (Pi → Peloton)
-│   └── tickr.py      # HRS central reader (TICKR → Pi)
-├── workout/
-│   ├── state.py      # WorkoutStateMachine
-│   ├── recorder.py   # Stroke buffer, 10 s SQLite flush
-│   ├── detection.py  # Auto-pause / auto-end idle detection
-│   └── fit.py        # FIT file generation
-├── web/
-│   ├── server.py     # FastAPI app, WebSocket, lifespan
-│   └── routes/       # workouts.py, strava.py, settings.py, export.py
-├── export/
-│   ├── http.py       # HTTP export: send on workout end, retry queue
-│   └── payload.py    # JSON body (public contract, docs/export.md)
-├── strava/
-│   ├── auth.py       # OAuth2, token storage + refresh
-│   └── upload.py     # FIT upload, status polling
-└── storage/
-    ├── db.py         # aiosqlite wrapper, migrations
-    └── queries.py    # All SQL queries
-
-dashboard/            # React PWA (Vite + TypeScript + Tailwind + shadcn/ui)
-tests/
-├── unit/             # Protocol parsers, FTMS packing, models, state machine
-├── integration/      # API, storage, Strava (mock transport), S4/TICKR readers
-└── e2e/              # Full workout flow
-```
-
----
-
-## Development
-
-The project includes a Nix flake for a fully reproducible dev shell. With [direnv](https://direnv.net/) installed:
-
-```bash
-direnv allow        # automatically enters the dev shell and sets up .venv
-```
-
-Or manually:
-
-```bash
-nix develop
-```
-
-Without Nix (requires Python 3.11+):
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-```
-
-Run tests:
-
-```bash
-pytest tests/ -q
-```
-
-Dashboard:
-
-```bash
-cd dashboard
-npm install
-npm run dev        # dev server on :5173
-npm run build      # production build → dashboard/dist/
-npx tsc --noEmit   # type-check only
-```
-
-Hardware is never required for development — `MockSerial` and `MockBLEClient` fixtures in `tests/conftest.py` simulate the S4 and TICKR.
-
----
+</details>
 
 ## Docs
 
 | Document | Contents |
 |---|---|
-| [`docs/product-plan.md`](docs/product-plan.md) | Goals, integrations, feature spec, non-goals |
-| [`docs/architecture-plan.md`](docs/architecture-plan.md) | Tech stack, data models, event bus, API spec, BLE, S4 protocol, DB schema |
-| [`docs/implementation-plan.md`](docs/implementation-plan.md) | Phase-by-phase task breakdown with exit criteria |
-| [`docs/export.md`](docs/export.md) | HTTP export setup, delivery rules, and the request format for receivers |
-| [`docs/pi-setup.md`](docs/pi-setup.md) | Headless Pi OS flash, SSH, install, Strava OAuth, TICKR MAC |
-| [`docs/hardware-checklist.md`](docs/hardware-checklist.md) | Step-by-step hardware verification (S4, TICKR, FTMS, Peloton) |
-| [`TASKS.md`](TASKS.md) | Work tracker — task status by phase |
+| [Setup guide](docs/setup.md) | Install, rower, heart-rate strap, Strava, updates, troubleshooting |
+| [HTTP export](docs/export.md) | Sending workouts to your own server, and the request format for receivers |
+| [Hardware checklist](docs/hardware-checklist.md) | Step-by-step checks on a real Pi, S4, strap and Peloton |
+| [S4 protocol](docs/s4-protocol.md) | Notes on the WaterRower S4 USB serial protocol |
+| [Architecture](docs/architecture-plan.md) | The original design: data models, event bus, Bluetooth, database |
 
----
+## License
 
-## Security
-
-BuoyCast has **no login**: anyone on your network can open the dashboard and control the rower, including rebooting the Pi and deleting workouts. Keep it on a home network you trust and don't port-forward it to the internet. Other websites can't use your browser to send it commands: cross-site requests and DNS-rebinding hosts are rejected. See [SECURITY.md](SECURITY.md) for details and how to report a vulnerability.
-
----
-
-## Constraints
-
-Runs on Raspberry Pi Zero 2W: CPU < 50% average, RAM < 200 MB during an active workout. Four top-level coroutines (`s4_reader`, `tickr_reader`, `ftms_broadcaster`, `web_server`) are isolated — a crash in the web server does not affect the BLE broadcast.
+[MIT](LICENSE). BuoyCast isn't affiliated with WaterRower, Peloton, Strava or
+Wahoo.

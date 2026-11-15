@@ -1,5 +1,8 @@
 # BuoyCast — Architecture Plan
 
+> This is the original design document. The code is the source of truth where
+> they differ; it's kept for the reasoning behind the design.
+
 ## System Overview
 
 BuoyCast runs entirely on a Raspberry Pi Zero 2W. It reads workout data from a WaterRower S4 monitor over USB serial, merges in heart rate data from a Wahoo TICKR chest strap over BLE, and fans that data out to a BLE FTMS broadcast, a local WebSocket dashboard, and a SQLite workout store. Strava upload is triggered manually via the dashboard.
@@ -447,39 +450,9 @@ Full address map in `s4/protocol.py`, sourced from the official WaterRower S4/S5
 
 ## Configuration
 
-`config.toml` — stored on the Pi, edited once at setup.
-
-```toml
-[server]
-host = "0.0.0.0"
-port = 8080
-mdns_name = "waterrower"    # accessible at waterrower.local
-
-[s4]
-baud_rate = 19200
-poll_interval_hz = 1
-reconnect_delay_s = 5
-
-[heart_rate]
-enabled = true
-device_mac = "XX:XX:XX:XX:XX:XX"
-device_name = "TICKR XXXX"
-required = false             # workout proceeds without HR if strap unavailable
-
-[workout]
-auto_pause_idle_s = 30       # pause after 30s no strokes
-auto_end_idle_s = 300        # prompt to end after 5min idle
-min_workout_distance_m = 100 # discard workouts under 100m
-
-[strava]
-client_id = ""               # from your Strava app
-client_secret = ""
-# access_token and refresh_token stored separately after OAuth
-
-[analytics]
-enabled = false              # future: export to mini PC
-endpoint_url = ""
-```
+All settings live in `config.toml` on the Pi (`/opt/buoycast/config.toml`).
+[`config.toml.example`](../config.toml.example) is the annotated template and
+`src/config.py` holds the defaults.
 
 ---
 
@@ -507,22 +480,11 @@ endpoint_url = ""
 - Boot-time check: if incomplete workout found, surface recovery prompt in dashboard
 
 ### System Service
-```ini
-[Unit]
-Description=BuoyCast
-After=network.target bluetooth.target
 
-[Service]
-Type=simple
-User=pi
-WorkingDirectory=/home/pi/buoycast
-ExecStart=/home/pi/buoycast/venv/bin/python src/main.py
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
+BuoyCast runs as the unprivileged `buoycast` user under systemd. See
+[`deploy/buoycast.service`](../deploy/buoycast.service) for the unit and
+[`deploy/install.sh`](../deploy/install.sh) for the install layout
+(`/opt/buoycast/{config.toml,data,logs,releases/<version>,current}`).
 
 ---
 
@@ -566,10 +528,7 @@ Installed via `npx skills add pbakaus/impeccable` into the project root. Used du
 ## Future Considerations
 
 ### Mini PC Analytics Export
-- Pi exposes `GET /api/workouts?since={timestamp}` for pull-based sync
-- Analytics machine (running DuckDB) polls periodically and ingests new workouts
-- Workout payload includes full stroke time series as JSON
-- No dependency on analytics machine being online
+- Built as a push instead: the HTTP export (see [export.md](export.md)) POSTs each finished workout, with its full sample series, to a configured endpoint and retries until delivered
 
 ### ANT+ Support
 - Adding a USB ANT+ dongle enables Garmin watch connectivity

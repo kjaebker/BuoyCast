@@ -91,7 +91,7 @@ curl -s http://buoycast.local:8080/api/status | python3 -m json.tool
 ### 2.1 Physical setup
 
 - [ ] TICKR strap moistened and worn
-- [ ] TICKR device_mac set in `/opt/buoycast/config.toml` (see `docs/pi-setup.md` § 5)
+- [ ] TICKR device_mac set in `/opt/buoycast/config.toml` (see [setup guide → Heart-rate strap](setup.md#heart-rate-strap))
 
 ### 2.2 Service log — TICKR connected
 
@@ -282,7 +282,7 @@ ls -lh /opt/buoycast/data/fit/
 
 ## 5 — Strava upload
 
-(Requires Strava OAuth completed — see `docs/pi-setup.md` § 6)
+(Requires Strava OAuth completed — see [setup guide → Strava](setup.md#strava))
 
 - [ ] From the completion screen, tap **Upload to Strava**
 - [ ] Status indicator cycles through `UPLOADING` → `UPLOADED`

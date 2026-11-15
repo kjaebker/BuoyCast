@@ -1,5 +1,7 @@
 # BuoyCast — Product Plan
 
+> This is the original product brief, kept for context. See the README for what BuoyCast does today.
+
 ## Overview
 
 BuoyCast is a self-hosted, Raspberry Pi-based application that connects a WaterRower S4 monitor to modern fitness platforms and provides a live workout dashboard. It replaces the need for the official WaterRower COMmodule by reading data directly from the S4's USB serial port and re-broadcasting it over Bluetooth LE (FTMS), while also recording workouts locally and enabling manual upload to Strava.
@@ -65,7 +67,7 @@ The Pi connects to the WaterRower S4 via the OTG data port using the mini USB ca
 ## Features
 
 ### Live Dashboard
-- Responsive Progressive Web App (PWA) accessible at `waterrower.local`
+- Responsive Progressive Web App (PWA) accessible at `buoycast.local:8080`
 - Optimised layouts for iPhone (portrait) and iPad (landscape)
 - Screen wake lock to prevent display sleep during workouts
 - WebSocket-driven live data — no polling
@@ -180,7 +182,7 @@ Each completed workout carries one of the following upload states:
 ### Daily Use
 1. Pi is always on — no action required
 2. Put on TICKR strap — Pi connects automatically
-3. Open `waterrower.local` on iPhone or iPad
+3. Open `buoycast.local:8080` on iPhone or iPad
 4. Tap Start Workout
 5. Row
 6. Tap End Workout
