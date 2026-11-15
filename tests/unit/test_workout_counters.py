@@ -81,3 +81,19 @@ def test_long_rowing_before_start_is_not_counted():
     out = c.apply(s4(1612, 141, 404))
     assert out.distance_m == 12
     assert out.elapsed_seconds == 4
+
+
+def test_monitor_reset_after_a_workout_does_not_zero_the_next_one():
+    """End resets the S4; rowing straight on into the next workout must count."""
+    c = WorkoutCounters()
+    c.apply(s4(0, 0, 0, rate=0))
+    c.start_workout()
+    c.apply(s4(500, 50, 120))
+    c.end_workout()
+    c.apply(s4(510, 51, 122))  # still rowing, monitor not yet reset
+    c.apply(s4(3, 1, 1))  # monitor reset lands
+    idle = c.apply(s4(20, 3, 6))
+    assert idle.distance_m == 20
+    c.start_workout()  # auto-start within the lead-in window
+    out = c.apply(s4(40, 5, 11))
+    assert out.distance_m == 40

@@ -292,3 +292,19 @@ async def test_handle_workout_started_directly(recorder):
     assert wid == recorder.workout_id
     assert recorder.buffer_size == 0
     assert recorder.total_recorded == 0
+
+
+async def test_summary_survives_reset_before_end_is_handled(sm, recorder, db):
+    """A fast end->reset must still finalise the workout (no orphaned row)."""
+    await recorder.start()
+    try:
+        await sm.start()
+        await asyncio.sleep(0.02)
+        workout_id = recorder.workout_id
+        await sm.end()
+        await sm.reset()  # clears sm.started_at before the recorder runs
+        await asyncio.sleep(0.05)
+        workout = await get_workout(db, workout_id)
+        assert workout is not None and workout.ended_at is not None
+    finally:
+        await recorder.stop()

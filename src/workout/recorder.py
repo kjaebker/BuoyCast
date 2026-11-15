@@ -53,6 +53,10 @@ class StrokeRecorder:
         self._buffer: deque[StrokeRecord] = deque()
         self._all_strokes: list[StrokeRecord] = []
         self._last_calories: int | None = None
+        self._last_stroke_count: int | None = None
+        # Captured at start: the state machine's started_at is cleared on reset,
+        # which can land before this recorder handles WORKOUT_ENDED.
+        self._started_at: datetime | None = None
 
     @property
     def workout_id(self) -> str | None:
@@ -135,6 +139,8 @@ class StrokeRecorder:
             # Track latest calories value for summary computation
             if metrics.calories is not None:
                 self._last_calories = metrics.calories
+            if metrics.stroke_count is not None:
+                self._last_stroke_count = metrics.stroke_count
 
     async def _flush_loop(self) -> None:
         """Periodically flush buffer to SQLite."""
@@ -184,9 +190,11 @@ class StrokeRecorder:
         self._buffer.clear()
         self._all_strokes.clear()
         self._last_calories = None
+        self._last_stroke_count = None
 
         # Insert placeholder so strokes can reference this workout_id
         started_at = self._sm.started_at or datetime.now(tz=UTC)
+        self._started_at = started_at
         placeholder = WorkoutRecord(
             id=self._workout_id,
             started_at=started_at,
@@ -227,15 +235,19 @@ class StrokeRecorder:
 
     def _compute_summary_fields(self) -> dict:
         """Compute summary stats as a dict for update_workout."""
-        if self._workout_id is None or self._sm.started_at is None:
+        started_at = self._started_at or self._sm.started_at
+        if self._workout_id is None or started_at is None:
             return {}
 
         strokes = self._all_strokes
-        total_strokes = len(strokes)
+        # Metric samples arrive ~1 Hz, so they are not strokes: use the
+        # monitor's (workout-relative) stroke count when it reports one.
+        total_strokes = (
+            self._last_stroke_count if self._last_stroke_count is not None else len(strokes)
+        )
 
         total_distance = max((s.distance_m for s in strokes), default=0.0)
 
-        started_at = self._sm.started_at
         ended_at = self._sm.ended_at or datetime.now(tz=UTC)
         elapsed = int((ended_at - started_at).total_seconds())
 

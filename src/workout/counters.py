@@ -27,7 +27,7 @@ from src.models import RowingMetrics
 
 COUNTER_FIELDS = ("stroke_count", "distance_m", "calories", "elapsed_seconds")
 # Longest rowing lead-in carried into a workout; comfortably covers the
-# dashboard's 8 s auto-start countdown.
+# dashboard's 10 s auto-start countdown.
 BURST_CARRY_S = 30.0
 
 Snapshot = dict[str, float]
@@ -58,6 +58,7 @@ class WorkoutCounters:
         )
         self._base = dict(self._burst_base if recent_burst else current)
         self._carry = dict.fromkeys(COUNTER_FIELDS, 0.0)
+        self._last_out = dict.fromkeys(COUNTER_FIELDS, 0.0)
         self._in_workout = True
 
     def end_workout(self) -> None:
@@ -79,6 +80,13 @@ class WorkoutCounters:
                     self._base[f] = 0.0
                 out[f] = self._carry[f] + max(0.0, snap[f] - self._base[f])
         else:
+            if self._last_raw is not None and any(
+                snap[f] < self._last_raw[f] for f in COUNTER_FIELDS
+            ):
+                # Monitor was reset (BuoyCast resets it when a workout ends):
+                # anything still rowing now counts from zero.
+                self._burst_base = dict.fromkeys(COUNTER_FIELDS, 0.0) if rowing else None
+                self._burst_at = raw.timestamp if rowing else None
             if rowing and self._burst_base is None:
                 self._burst_base = dict(self._last_raw or snap)
                 self._burst_at = raw.timestamp

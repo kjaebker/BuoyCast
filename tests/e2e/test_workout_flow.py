@@ -330,7 +330,7 @@ async def test_multiple_workouts_in_session(event_bus, sm, merger, detection, re
         first_id = recorder.workout_id
 
         for i in range(3):
-            await _emit_s4(event_bus, _s4_metrics(distance_m=float(i * 10)))
+            await _emit_s4(event_bus, _s4_metrics(distance_m=float(i * 10), stroke_count=i + 1))
         await sm.end()
         await asyncio.sleep(0.05)
 
@@ -341,8 +341,9 @@ async def test_multiple_workouts_in_session(event_bus, sm, merger, detection, re
         await asyncio.sleep(0.02)
         second_id = recorder.workout_id
 
+        # The monitor is reset between workouts, so its counters restart.
         for i in range(5):
-            await _emit_s4(event_bus, _s4_metrics(distance_m=float(i * 10)))
+            await _emit_s4(event_bus, _s4_metrics(distance_m=float(i * 10), stroke_count=i + 1))
         await sm.end()
         await asyncio.sleep(0.05)
 
