@@ -7,6 +7,10 @@ can include breaking changes; they're called out below.
 
 ## Unreleased
 
+## 0.3.0 — 2026-11-14
+
+First public release.
+
 ### Security
 - Other websites can no longer control BuoyCast through your browser.
   Cross-site POST/PUT/PATCH/DELETE requests and WebSocket connections are
@@ -15,18 +19,6 @@ can include breaking changes; they're called out below.
   dashboard by a host name other than an IP address, `*.local` or a
   single-label name, add it to the new `[server] allowed_hosts` setting.
   See [SECURITY.md](SECURITY.md).
-
-### Changed
-- The default `[server] mdns_name` is now `buoycast` (was `waterrower`).
-- Documentation rewritten for new users: README, a single
-  [setup guide](docs/setup.md), [CONTRIBUTING.md](CONTRIBUTING.md) and
-  [SECURITY.md](SECURITY.md). Internal planning files were removed.
-- The Peloton section of the [hardware checklist](docs/hardware-checklist.md)
-  now has the correct pairing steps (Peloton app, inside a rowing class).
-- CI uses actions/checkout and actions/setup-node v7 and astral-sh/setup-uv
-  v10 (Node 24), replacing the deprecated Node 20 versions.
-
-## 0.3.0 — 2026-11-14
 
 ### Added
 - **HTTP export:** send each finished workout (JSON or FIT) to your own
@@ -45,6 +37,12 @@ can include breaking changes; they're called out below.
   place.
 - Heart rate moved from the stats grid into the stroke-rate chart.
 - Workout history only shows Strava controls when Strava is connected.
+- The default `[server] mdns_name` is now `buoycast` (was `waterrower`).
+- Documentation rewritten for new users: README, a single
+  [setup guide](docs/setup.md), [CONTRIBUTING.md](CONTRIBUTING.md) and
+  [SECURITY.md](SECURITY.md). Internal planning files were removed.
+- The Peloton section of the [hardware checklist](docs/hardware-checklist.md)
+  now has the correct pairing steps (Peloton app, inside a rowing class).
 
 ### Fixed
 - Distance, strokes and calories now count from the start of the workout,
