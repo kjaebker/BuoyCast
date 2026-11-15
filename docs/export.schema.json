@@ -1,0 +1,264 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ExportPayload",
+  "$defs": {
+    "ExportSample": {
+      "description": "One sample, recorded about once per second while the workout was active.",
+      "properties": {
+        "ts": {
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "distance_m": {
+          "minimum": 0,
+          "title": "Distance M",
+          "type": "number"
+        },
+        "stroke_rate": {
+          "minimum": 0,
+          "title": "Stroke Rate",
+          "type": "number"
+        },
+        "power_watts": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Power Watts"
+        },
+        "pace_s_per_500m": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pace S Per 500M"
+        },
+        "heart_rate_bpm": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Heart Rate Bpm"
+        },
+        "rr_intervals_ms": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rr Intervals Ms"
+        }
+      },
+      "required": [
+        "ts",
+        "distance_m",
+        "stroke_rate",
+        "power_watts",
+        "pace_s_per_500m",
+        "heart_rate_bpm",
+        "rr_intervals_ms"
+      ],
+      "title": "ExportSample",
+      "type": "object"
+    },
+    "ExportSource": {
+      "properties": {
+        "app": {
+          "const": "buoycast",
+          "default": "buoycast",
+          "title": "App",
+          "type": "string"
+        },
+        "version": {
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "app",
+        "version"
+      ],
+      "title": "ExportSource",
+      "type": "object"
+    },
+    "ExportWorkout": {
+      "description": "Summary of one workout. Times are UTC ISO 8601; distances in metres.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "sport": {
+          "const": "rowing",
+          "default": "rowing",
+          "title": "Sport",
+          "type": "string"
+        },
+        "sub_sport": {
+          "const": "indoor_rowing",
+          "default": "indoor_rowing",
+          "title": "Sub Sport",
+          "type": "string"
+        },
+        "started_at": {
+          "format": "date-time",
+          "title": "Started At",
+          "type": "string"
+        },
+        "ended_at": {
+          "format": "date-time",
+          "title": "Ended At",
+          "type": "string"
+        },
+        "elapsed_seconds": {
+          "minimum": 0,
+          "title": "Elapsed Seconds",
+          "type": "integer"
+        },
+        "total_distance_m": {
+          "minimum": 0,
+          "title": "Total Distance M",
+          "type": "number"
+        },
+        "total_strokes": {
+          "minimum": 0,
+          "title": "Total Strokes",
+          "type": "integer"
+        },
+        "calories": {
+          "minimum": 0,
+          "title": "Calories",
+          "type": "integer"
+        },
+        "avg_pace_s_per_500m": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Avg Pace S Per 500M"
+        },
+        "avg_stroke_rate": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Avg Stroke Rate"
+        },
+        "avg_power_watts": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Avg Power Watts"
+        },
+        "avg_heart_rate": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Avg Heart Rate"
+        },
+        "max_heart_rate": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Heart Rate"
+        }
+      },
+      "required": [
+        "id",
+        "sport",
+        "sub_sport",
+        "started_at",
+        "ended_at",
+        "elapsed_seconds",
+        "total_distance_m",
+        "total_strokes",
+        "calories",
+        "avg_pace_s_per_500m",
+        "avg_stroke_rate",
+        "avg_power_watts",
+        "avg_heart_rate",
+        "max_heart_rate"
+      ],
+      "title": "ExportWorkout",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "schema_version": {
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "source": {
+      "$ref": "#/$defs/ExportSource"
+    },
+    "workout": {
+      "$ref": "#/$defs/ExportWorkout"
+    },
+    "samples": {
+      "items": {
+        "$ref": "#/$defs/ExportSample"
+      },
+      "title": "Samples",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "source",
+    "workout",
+    "samples"
+  ],
+  "type": "object"
+}

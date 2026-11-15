@@ -64,6 +64,11 @@ User-Agent: BuoyCast/<version>
 
 ### `format = "json"`
 
+The machine-readable schema is in [`export.schema.json`](export.schema.json)
+(JSON Schema 2020-12). It's generated from `src/export/payload.py`, and a test
+fails if the two drift apart. Every field is always present; unknown values
+are `null`.
+
 ```json
 {
   "schema_version": 1,
@@ -110,7 +115,8 @@ User-Agent: BuoyCast/<version>
 | `distance_m` | Cumulative metres at that sample. |
 | `stroke_rate` | Strokes per minute. `0` when the monitor reports no rate. |
 | `pace_s_per_500m` | Seconds per 500 m. |
-| `heart_rate_bpm`, `rr_intervals_ms` | `null` when no strap was connected, or when `include_hr = false`. The summary's `avg_heart_rate` and `max_heart_rate` are also `null` in that case. |
+| `heart_rate_bpm` | `null` when no strap was connected, when the strap's last reading is more than 5 s old (BuoyCast never reports a stale heart rate), or when `include_hr = false`. With `include_hr = false`, the summary's `avg_heart_rate` and `max_heart_rate` are `null` too. |
+| `rr_intervals_ms` | The RR intervals from the strap's most recent notification. The S4 can update faster than the strap notifies, so **the same batch can appear in consecutive samples**. Don't join them end to end for HRV analysis without removing repeats. Same `null` rules as `heart_rate_bpm`. |
 
 Averages, `power_watts`, `pace_s_per_500m` and the heart-rate fields can be
 `null` when the monitor didn't report them. Everything else is always present.
@@ -121,6 +127,65 @@ The body is the same Garmin FIT activity file that BuoyCast uploads to
 Strava (`Sport.ROWING` / `SubSport.INDOOR_ROWING`, one record per sample).
 The workout ID is only in the headers. Use this format when the receiver
 already understands FIT files.
+
+## Building a receiver
+
+A checklist for anyone writing the receiving side:
+
+1. **Check the token.** Compare the `Authorization` header with your
+   secret. Answer `401` when it doesn't match. BuoyCast then marks the
+   workout Rejected and stops sending it, instead of retrying forever.
+2. **Upsert on `workout.id`.** The same workout can arrive more than once:
+   after a timeout, or when someone presses **Send again**. Answer `2xx` to a
+   repeat as well. A repeat carries the same data, except that `include_hr`
+   may have changed in between.
+3. **Pick status codes on purpose.**
+
+   | You return | BuoyCast does |
+   |---|---|
+   | `2xx` | Marks it Sent. It's never sent again automatically. |
+   | `408`, `425`, `429`, `5xx`, or no answer within `timeout_s` | Retries every `retry_interval_s` until it gets a `2xx`. |
+   | Any other `4xx` (bad token, payload you can't parse) | Marks it Rejected. It's only resent when someone presses **Send now**. |
+
+   Use `503` when your storage is temporarily down, and `400` or `422` when
+   the body is wrong and resending won't help.
+4. **Answer within `timeout_s`** (30 s by default). If processing is slow,
+   store the raw body first and process it afterwards.
+5. **Allow large bodies.** A JSON sample is roughly 150–200 bytes, so a
+   30-minute row is about 350 KB and a 2-hour row about 1.5 MB. Set your
+   body limit to at least 5 MB.
+6. **IDs are unique per BuoyCast install, not globally.** `workout.id` is 12
+   random hex characters. If more than one rower sends to the same receiver,
+   give each its own token, or key on the token plus the ID.
+7. **Nothing is sent after delivery.** Deleting a workout on the Pi doesn't
+   notify the receiver, and finished workouts don't change.
+8. **Times are UTC.** Convert to local time yourself if you group workouts
+   by day.
+9. **Matching with other sources.** If the same row is also recorded by a
+   watch or another app, match on overlapping `started_at`–`ended_at`.
+   `elapsed_seconds` includes pauses. The number of samples is roughly the
+   active (moving) time in seconds.
+10. **Pin `schema_version`.** Reject versions you don't support with `422`,
+    so a future breaking change shows up as Rejected in the dashboard instead
+    of as silently wrong data.
+
+### Testing a receiver
+
+Simulation mode runs a complete fake workout without any hardware. Copy
+`config.toml.example`, point it at your receiver, and run:
+
+```bash
+python -m src.main --simulate --config my-config.toml
+curl -X POST localhost:8080/api/workout/start
+# ...row for a while (the simulator is rowing)...
+curl -X POST localhost:8080/api/workout/end
+```
+
+The workout is sent as soon as it ends. Set
+`[workout] min_workout_distance_m` low for short test rows. To resend it,
+use **Send again** in Workout History, or
+`curl -X POST localhost:8080/api/workouts/<id>/export`.
+`GET /api/export/status` shows how many workouts are in each state.
 
 ## A minimal receiver
 

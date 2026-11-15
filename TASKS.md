@@ -49,3 +49,4 @@ Add new tasks here as they arise.
 | E19 | Frontend: Settings — add workout state display with force-reset, fix TICKR connected tracking | done | 2026-03-19 |
 | E20 | Performance review: audit CPU/memory/event-bus/rendering efficiency for Pi Zero 2W | done | 2026-03-19 |
 | E21 | Backend + dashboard: generic HTTP export — POST finished workouts (JSON or FIT) to a configured URL with bearer token, retry queue in SQLite, manual send from history | done | 2026-11-14 |
+| E22 | Docs: receiver guide for HTTP export (checklist, status codes, testing) + published JSON Schema kept in sync by test | done | 2026-11-14 |

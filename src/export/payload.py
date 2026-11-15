@@ -10,19 +10,35 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from src.models import StrokeRecord, WorkoutRecord
 
 SCHEMA_VERSION = 1
 
 
-class ExportSource(BaseModel):
+class _Out(BaseModel):
+    # BuoyCast always sends every field (null when unknown), so the published
+    # JSON Schema (docs/export.schema.json) marks every field as required.
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+
+
+def export_json_schema() -> dict:
+    """JSON Schema for the export body, as published in docs/export.schema.json."""
+    schema = ExportPayload.model_json_schema(mode="serialization")
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "BuoyCast workout export (format = json)",
+        **schema,
+    }
+
+
+class ExportSource(_Out):
     app: Literal["buoycast"] = "buoycast"
     version: str
 
 
-class ExportWorkout(BaseModel):
+class ExportWorkout(_Out):
     """Summary of one workout. Times are UTC ISO 8601; distances in metres."""
 
     id: str
@@ -41,7 +57,7 @@ class ExportWorkout(BaseModel):
     max_heart_rate: int | None = None
 
 
-class ExportSample(BaseModel):
+class ExportSample(_Out):
     """One sample, recorded about once per second while the workout was active."""
 
     ts: datetime
@@ -53,7 +69,7 @@ class ExportSample(BaseModel):
     rr_intervals_ms: list[int] | None = None
 
 
-class ExportPayload(BaseModel):
+class ExportPayload(_Out):
     schema_version: int = SCHEMA_VERSION
     source: ExportSource
     workout: ExportWorkout

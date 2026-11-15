@@ -368,3 +368,27 @@ class TestRoutes:
         app = create_app(db=db, exporter=_exporter(db, client))
         with TestClient(app) as tc:
             assert tc.post("/api/workouts/nope/export").status_code == 404
+
+
+class TestPublishedSchema:
+    def test_docs_schema_matches_model(self):
+        """docs/export.schema.json must match the payload model.
+
+        Regenerate after changing src/export/payload.py:
+        python -c "import json; from src.export.payload import export_json_schema; \
+open('docs/export.schema.json','w').write(json.dumps(export_json_schema(), indent=2) + '\\n')"
+        """
+        from pathlib import Path
+
+        from src.export.payload import export_json_schema
+
+        path = Path(__file__).parents[2] / "docs" / "export.schema.json"
+        assert json.loads(path.read_text()) == export_json_schema()
+
+    async def test_sent_body_validates_against_schema(self, db, client, receiver):
+        jsonschema = pytest.importorskip("jsonschema")
+        from src.export.payload import export_json_schema
+
+        await _add_workout(db)
+        await _exporter(db, client).sweep()
+        jsonschema.validate(json.loads(receiver.requests[0].content), export_json_schema())
