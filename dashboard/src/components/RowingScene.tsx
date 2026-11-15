@@ -1,33 +1,29 @@
 /**
  * RowingScene — Pixi.js pixel-art parallax rowing scene.
  *
- * Drop-in replacement for the SVG version; same props interface.
- * Uses GPU-accelerated TilingSprites for parallax background layers
- * and an AnimatedSprite synced to the current stroke rate.
- *
- * Assets (pre-extracted to dashboard/public/assets/rowing/):
- *   far-background.png, mid-background.png, gameplay.png,
- *   foreground.png, rower-spritesheet.png
- *
  * Layer stack (back → front):
- *   bgFill          — solid dark-navy fill behind all layers
- *   far-background  — mountains + sunset sky (0.03x scroll)
- *   mid-background  — forest treeline (0.12x scroll)
- *   gameplay        — water surface with shoreline (0.30x scroll)
- *   rower           — animated sprite on the water
- *   foreground      — cattail/marsh silhouette (0.60x scroll)
+ *   far-background  — mountains + sunset sky
+ *   mid-background  — forest treeline
+ *   gameplay        — water surface with shoreline
+ *   foreground      — cattail/marsh silhouette
+ *   rower           — procedural sculler (see rowing/rowerSprite.ts), in
+ *                     front so the near oar is never hidden
+ *
+ * The rower's pose follows a continuous stroke phase advanced at the live
+ * stroke rate, and the scroll speed surges on the drive and glides on the
+ * recovery, so the scene reads like real rowing rather than a frame loop.
  */
 
-import { useRef, useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { Application, Assets, Sprite, Texture, TextureSource, TilingSprite } from "pixi.js";
 import {
-  Application,
-  Assets,
-  TilingSprite,
-  Texture,
-  Rectangle,
-  AnimatedSprite,
-  TextureSource,
-} from "pixi.js";
+  DRIVE_FRACTION,
+  FRAME_COUNT,
+  SPRITE_H,
+  SPRITE_W,
+  WATERLINE_Y,
+  buildRowerFrames,
+} from "@/components/rowing/rowerSprite";
 import "./RowingScene.css";
 
 type RowingSceneProps = {
@@ -38,17 +34,17 @@ type RowingSceneProps = {
 };
 
 const ASSET_BASE = "/assets/rowing/";
-
-// Spritesheet layout: 4 columns × 4 rows — each row is an independent cycle
-const NUM_COLS = 4;
-const NUM_ROWS = 4;
-const ANIM_ROW = 0; // which row to use for the looping animation
-
-// Global scroll speed scale — increase to scroll faster, decrease to slow down
+/** Global scroll speed scale. */
 const SCROLL_SCALE = 0.45;
+/** Phase just after the finish, where the rower settles when stopping. */
+const REST_PHASE = DRIVE_FRACTION + 0.04;
+/** Fraction of the scene height where the water surface sits. */
+const WATER_FRAC = 0.835;
+// Measured from the source images.
+const GAMEPLAY_SHORELINE_FRAC = 480 / 864;
+const FG_CONTENT_END_FRAC = 641 / 864;
 
-const FRAME_SEQUENCE = [0, 1, 2, 3];
-const NUM_FRAMES = FRAME_SEQUENCE.length;
+type Live = { isRowing: boolean; strokeRate: number; boatSpeed: number };
 
 function paceToSpeed(pace: number | null): number {
   if (!pace || pace <= 0) return 0;
@@ -63,41 +59,26 @@ function sceneHeight(): number {
   return 200; // iPhone
 }
 
-export function RowingScene({
-  strokeRate,
-  pace,
-  isActive,
-  isPaused,
-}: RowingSceneProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const rowerRef = useRef<AnimatedSprite | null>(null);
-  const targetSpeedRef = useRef(0);
-  const currentSpeedRef = useRef(0);
-  const targetAnimSpeedRef = useRef(0);
+/** Speed multiplier through the stroke: surge on the drive, glide on the recovery. */
+function surge(phase: number): number {
+  if (phase < DRIVE_FRACTION) return 1 + 0.2 * Math.sin((Math.PI * phase) / DRIVE_FRACTION);
+  return 1 - 0.1 * Math.sin((Math.PI * (phase - DRIVE_FRACTION)) / (1 - DRIVE_FRACTION));
+}
 
-  // Keep derived state in refs so async init can read current values
-  const isRowingRef = useRef(false);
-  const strokeRateRef = useRef<number | null>(strokeRate);
+export function RowingScene({ strokeRate, pace, isActive, isPaused }: RowingSceneProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const liveRef = useRef<Live>({ isRowing: false, strokeRate: 0, boatSpeed: 0 });
 
   const isRowing = isActive && !isPaused && (strokeRate ?? 0) > 0;
 
-  // Sync refs on every render
-  isRowingRef.current = isRowing;
-  strokeRateRef.current = strokeRate;
-  targetSpeedRef.current = isRowing ? paceToSpeed(pace) : 0;
-  targetAnimSpeedRef.current = isRowing && strokeRate ? (NUM_FRAMES * strokeRate) / 3600 : 0;
-
-  // Update rower play/stop state; speed is lerped in the ticker
+  // Hand the latest values to the Pixi ticker without re-running init.
   useEffect(() => {
-    const rower = rowerRef.current;
-    if (!rower) return;
-    if (!isRowing || !strokeRate) {
-      rower.stop();
-      rower.currentFrame = 0;
-    } else {
-      if (!rower.playing) rower.play();
-    }
-  }, [isRowing, strokeRate]);
+    liveRef.current = {
+      isRowing,
+      strokeRate: isRowing ? (strokeRate ?? 0) : 0,
+      boatSpeed: isRowing ? paceToSpeed(pace) : 0,
+    };
+  }, [isRowing, strokeRate, pace]);
 
   // One-time Pixi initialisation
   useEffect(() => {
@@ -109,22 +90,19 @@ export function RowingScene({
     let ro: ResizeObserver | null = null;
     let onVisibilityChange: (() => void) | null = null;
 
-    (async () => {
-      // Nearest-neighbour for crisp pixel art — must set before any texture load
+    void (async () => {
+      // Nearest-neighbour for crisp pixel art — must be set before textures load.
       TextureSource.defaultOptions.scaleMode = "nearest";
 
-      const H = sceneHeight();
-      const W = container.clientWidth || 375;
-
+      const dpr = window.devicePixelRatio ?? 1;
       app = new Application();
       await app.init({
-        width: W,
-        height: H,
-        background: 0x0a1428, // dark navy — shows through transparent sky areas in assets
-        backgroundAlpha: 1,
+        width: container.clientWidth || 375,
+        height: sceneHeight(),
+        background: 0x0a1428, // shows through transparent sky areas
         antialias: false,
-        hello: false, // suppress console banner
-        resolution: window.devicePixelRatio ?? 1,
+        hello: false,
+        resolution: dpr,
         autoDensity: true,
       });
 
@@ -138,160 +116,113 @@ export function RowingScene({
       }
 
       container.appendChild(app.canvas);
+      app.stage.eventMode = "none"; // nothing is interactive; skip hit-testing
 
-      // Nothing in the scene is interactive; skip hit-testing entirely
-      app.stage.eventMode = "none";
+      const [farBgTex, midBgTex, gameplayTex, fgTex] = await Promise.all([
+        Assets.load<Texture>(ASSET_BASE + "far-background-2.png"),
+        Assets.load<Texture>(ASSET_BASE + "mid-background-1.png"),
+        Assets.load<Texture>(ASSET_BASE + "gameplay.png"),
+        Assets.load<Texture>(ASSET_BASE + "foreground.png"),
+      ]);
+      if (destroyed || !app) return;
 
-      // Load all assets in parallel
-      const [farBgTex, midBgTex, gameplayTex, fgTex, rowerSheetTex] =
-        await Promise.all([
-          Assets.load(ASSET_BASE + "far-background-2.png"),
-          Assets.load(ASSET_BASE + "mid-background-1.png"),
-          Assets.load(ASSET_BASE + "gameplay.png"),
-          Assets.load(ASSET_BASE + "foreground.png"),
-          Assets.load(ASSET_BASE + "rower-spritesheet.png"),
-        ]);
+      const farBg = new TilingSprite({ texture: farBgTex });
+      const midBg = new TilingSprite({ texture: midBgTex });
+      const gameplay = new TilingSprite({ texture: gameplayTex });
+      const fg = new TilingSprite({ texture: fgTex });
 
-      if (destroyed) return;
+      const rowerFrames = buildRowerFrames().map((canvas) => Texture.from(canvas));
+      const rower = new Sprite(rowerFrames[FRAME_COUNT]); // rest pose
+      rower.anchor.set(0.5, (WATERLINE_Y + 1) / SPRITE_H);
 
-      // ── Build scene ──────────────────────────────────────────────
+      // The rower sits in front of the cattails so the near oar is never hidden.
+      app.stage.addChild(farBg, midBg, gameplay, fg, rower);
 
-      // Fraction of gameplay image where water content starts (measured from top)
-      const GAMEPLAY_SHORELINE_FRAC = 480 / 864;
-      // Fraction of foreground image where cattail content ends (measured from top)
-      const FG_CONTENT_END_FRAC = 641 / 864;
+      let rowerBaseY = 0;
 
-      function buildScene(W: number, H: number) {
-        // shorelineY: trees bottom; gameplay.y is offset slightly above this
-        // rowerHullY: boat hull in the open water area
+      function layout(W: number, H: number) {
         const shorelineY = Math.round(H * 0.83);
-        const rowerHullY = Math.round(H * 0.73);
 
-        // Far background: 1.2× height-based scale so mountains appear fuller/taller
-        const farBgScale = (H * 1.2) / farBgTex.height;
-        const farBg = new TilingSprite({
-          texture: farBgTex,
-          width: W,
-          height: H,
-        });
-        farBg.tileScale.set(farBgScale);
+        farBg.width = W;
+        farBg.height = H;
+        farBg.tileScale.set((H * 1.2) / farBgTex.height);
 
-        // Mid background: trees (0.62), bottom at shorelineY
-        const midBgScale = (H * 0.62) / midBgTex.height;
-        const midBgH = Math.round(midBgTex.height * midBgScale);
-        const midBg = new TilingSprite({
-          texture: midBgTex,
-          width: W,
-          height: midBgH,
-        });
-        midBg.y = shorelineY - midBgH;
-        midBg.tileScale.set(midBgScale);
+        const midScale = (H * 0.62) / midBgTex.height;
+        midBg.width = W;
+        midBg.height = Math.round(midBgTex.height * midScale);
+        midBg.y = shorelineY - midBg.height;
+        midBg.tileScale.set(midScale);
 
-        // Gameplay layer: tilePosition.y aligns water content to top of sprite
-        const gameplayScale = H / gameplayTex.height;
-        const gameplayH = H - shorelineY * 0.45;
-        const gameplay = new TilingSprite({
-          texture: gameplayTex,
-          width: W,
-          height: gameplayH,
-        });
+        gameplay.width = W;
+        gameplay.height = H - shorelineY * 0.45;
         gameplay.y = shorelineY * 0.85;
-        gameplay.tileScale.set(gameplayScale);
+        gameplay.tileScale.set(H / gameplayTex.height);
         gameplay.tilePosition.y = -Math.round(H * GAMEPLAY_SHORELINE_FRAC);
 
-        // Foreground: cattail silhouette — align content bottom with scene bottom
-        const fgScale = (H * 1) / fgTex.height;
-        const fgH = Math.round(fgTex.height * fgScale);
-        const fg = new TilingSprite({
-          texture: fgTex,
-          width: W,
-          height: fgH,
-        });
-        fg.y = H - Math.round(fgH * FG_CONTENT_END_FRAC);
+        const fgScale = (H * 0.5) / fgTex.height;
+        fg.width = W;
+        fg.height = Math.round(fgTex.height * fgScale);
+        fg.y = H - Math.round(fg.height * FG_CONTENT_END_FRAC);
         fg.tileScale.set(fgScale);
 
-        return { farBg, midBg, gameplay, fg, shorelineY, rowerHullY };
+        // Snap the rower's scale to whole device pixels so its pixels stay even.
+        const scale = Math.max(1, Math.round((H / 76) * dpr)) / dpr;
+        rower.scale.set(Math.min(scale, (W * 0.8) / SPRITE_W));
+        rower.x = Math.round(W / 2);
+        rowerBaseY = Math.round(H * WATER_FRAC);
+        rower.y = rowerBaseY;
       }
 
-      const { farBg, midBg, gameplay, fg, rowerHullY } = buildScene(W, H);
-      app!.stage.addChild(farBg);
-      app!.stage.addChild(midBg);
-      app!.stage.addChild(gameplay);
+      layout(container.clientWidth || 375, sceneHeight());
 
-      // ── Rower AnimatedSprite ──────────────────────────────────────
-
-      const fw = Math.floor(rowerSheetTex.width / NUM_COLS);
-      const fh = Math.floor(rowerSheetTex.height / NUM_ROWS);
-      // Skip 1px at top of each row to exclude dark border at y=0 of spritesheet
-      const SPRITE_Y_OFFSET = 1;
-      const effectiveFh = fh - SPRITE_Y_OFFSET;
-
-      const colTextures = Array.from({ length: NUM_COLS }, (_, col) =>
-        new Texture({
-          source: rowerSheetTex.source,
-          frame: new Rectangle(col * fw, ANIM_ROW * fh + SPRITE_Y_OFFSET, fw, effectiveFh),
-        }),
-      );
-      const frames = FRAME_SEQUENCE.map((col) => colTextures[col]);
-
-      function makeRower(W: number, hullY: number): AnimatedSprite {
-        const rowerScale = (H * 0.30) / effectiveFh;
-        const rowerW = fw * rowerScale;
-        const rowerH = effectiveFh * rowerScale;
-        const rower = new AnimatedSprite(frames);
-        rower.scale.set(rowerScale);
-        rower.x = Math.round((W - rowerW) / 2);
-        // Position rower so boat hull sits at hullY
-        rower.y = hullY - Math.round(rowerH * 0.38);
-        rower.animationSpeed = 0;
-        rower.currentFrame = 0;
-        return rower;
-      }
-
-      const rower = makeRower(W, rowerHullY);
-      let rowerBaseY = rower.y;
-      rowerRef.current = rower;
-      app!.stage.addChild(rower);
-
-      // Foreground renders in front of the rower for depth
-      app!.stage.addChild(fg);
-
-      // Apply current animation state (might have changed while assets loaded)
-      if (isRowingRef.current && strokeRateRef.current) {
-        rower.play();
-      }
-
-      // ── Ticker: parallax scroll ──────────────────────────────────
-
+      // ── Ticker ───────────────────────────────────────────────────
+      let phase = REST_PHASE;
+      let atRest = true;
+      let strokeRateNow = 0; // smoothed SPM
+      let speedNow = 0; // smoothed boat speed
       let bobTime = 0;
 
-      app!.ticker.add((ticker) => {
-        const dt = ticker.deltaTime;
+      app.ticker.add((ticker) => {
+        const dt = Math.min(ticker.deltaMS, 100) / 1000; // seconds, clamped after tab switches
+        const live = liveRef.current;
+        const smoothing = Math.min(dt * 2, 1); // ~0.5 s time constant
 
-        // Smooth lerp toward target scroll speed and animation speed (~2s)
-        const diff = targetSpeedRef.current - currentSpeedRef.current;
-        currentSpeedRef.current += diff * Math.min(dt * 0.033, 1);
+        if (live.isRowing) {
+          atRest = false;
+          strokeRateNow += (live.strokeRate - strokeRateNow) * smoothing;
+        }
 
-        const animDiff = targetAnimSpeedRef.current - rower.animationSpeed;
-        rower.animationSpeed += animDiff * Math.min(dt * 0.033, 1);
+        if (!atRest) {
+          // Keep at least a gentle rate so a stopping rower finishes the stroke.
+          const spm = live.isRowing ? strokeRateNow : Math.max(strokeRateNow, 16);
+          const prev = phase;
+          phase = (phase + (spm / 60) * dt) % 1;
+          const crossedRest =
+            (prev < REST_PHASE && phase >= REST_PHASE) || (prev > phase && phase >= REST_PHASE);
+          if (!live.isRowing && crossedRest) {
+            atRest = true;
+            phase = REST_PHASE;
+          }
+        }
 
-        const spd = currentSpeedRef.current;
+        rower.texture = atRest ? rowerFrames[FRAME_COUNT] : rowerFrames[Math.floor(phase * FRAME_COUNT) % FRAME_COUNT];
 
-        // Idle bob: gentle sine wave, fades out as the boat accelerates
-        bobTime += dt * 0.03; // ~3.5 s per cycle at 60 fps
-        const bobStrength = Math.max(0, 1 - spd / 3);
-        rower.y = Math.round(rowerBaseY + 3 * bobStrength * Math.sin(bobTime));
+        speedNow += (live.boatSpeed - speedNow) * Math.min(dt * 1.2, 1);
+        const spd = speedNow * (atRest ? 1 : surge(phase));
 
-        // Skip scroll writes when effectively stationary
-        if (Math.abs(spd) < 0.01) return;
+        // Idle bob that fades out as the boat gets moving.
+        bobTime += dt * 1.8;
+        rower.y = Math.round(rowerBaseY + 2 * Math.max(0, 1 - spd / 3) * Math.sin(bobTime));
 
-        farBg.tilePosition.x -= spd * SCROLL_SCALE * 0.01 * dt;
-        midBg.tilePosition.x -= spd * SCROLL_SCALE * 0.10 * dt;
-        gameplay.tilePosition.x -= spd * SCROLL_SCALE * 0.20 * dt;
-        fg.tilePosition.x -= spd * SCROLL_SCALE * 0.60 * dt;
+        if (spd < 0.01) return;
+        const step = spd * SCROLL_SCALE * dt * 60;
+        farBg.tilePosition.x -= step * 0.01;
+        midBg.tilePosition.x -= step * 0.1;
+        gameplay.tilePosition.x -= step * 0.2;
+        fg.tilePosition.x -= step * 0.6;
       });
 
-      // Pause rendering when the tab is hidden to save battery on mobile
+      // Pause rendering while the tab is hidden to save battery.
       onVisibilityChange = () => {
         if (!app) return;
         if (document.hidden) app.ticker.stop();
@@ -299,72 +230,31 @@ export function RowingScene({
       };
       document.addEventListener("visibilitychange", onVisibilityChange);
 
-      // ── ResizeObserver ───────────────────────────────────────────
-
       ro = new ResizeObserver(([entry]) => {
         if (!app) return;
-        const W2 = Math.round(entry.contentRect.width);
-        const H2 = sceneHeight();
-        if (W2 === 0) return;
-
-        app.renderer.resize(W2, H2);
-
-        const shorelineY2 = Math.round(H2 * 0.83);
-        const rowerHullY2 = Math.round(H2 * 0.73);
-
-        farBg.width = W2;
-        farBg.height = H2;
-        farBg.tileScale.set((H2 * 1.2) / farBgTex.height);
-
-        const midBgScale2 = (H2 * 0.62) / midBgTex.height;
-        const midBgH2 = Math.round(midBgTex.height * midBgScale2);
-        midBg.width = W2;
-        midBg.height = midBgH2;
-        midBg.y = shorelineY2 - midBgH2;
-        midBg.tileScale.set(midBgScale2);
-
-        gameplay.width = W2;
-        gameplay.height = H2 - (shorelineY2 * 0.45);
-        gameplay.y = (shorelineY2 * 0.85);
-        gameplay.tileScale.set(H2 / gameplayTex.height);
-        gameplay.tilePosition.y = -Math.round(H2 * GAMEPLAY_SHORELINE_FRAC);
-
-        const fgScale2 = (H2 * 0.5) / fgTex.height;
-        const fgH2 = Math.round(fgTex.height * fgScale2);
-        fg.width = W2;
-        fg.height = fgH2;
-        fg.y = H2 - Math.round(fgH2 * FG_CONTENT_END_FRAC);
-        fg.tileScale.set(fgScale2);
-
-        const rowerScale2 = (H2 * 0.30) / effectiveFh;
-        const rowerW2 = fw * rowerScale2;
-        const rowerH2 = effectiveFh * rowerScale2;
-        rower.scale.set(rowerScale2);
-        rower.x = Math.round((W2 - rowerW2) / 2);
-        rowerBaseY = rowerHullY2 - Math.round(rowerH2 * 0.38);
-        rower.y = rowerBaseY;
+        const W = Math.round(entry.contentRect.width);
+        if (W === 0) return;
+        const H = sceneHeight();
+        app.renderer.resize(W, H);
+        layout(W, H);
       });
-
       ro.observe(container);
     })();
 
     return () => {
       destroyed = true;
       ro?.disconnect();
-      if (onVisibilityChange) {
-        document.removeEventListener("visibilitychange", onVisibilityChange);
-      }
-      rowerRef.current = null;
+      if (onVisibilityChange) document.removeEventListener("visibilitychange", onVisibilityChange);
       if (app) {
         try {
           app.destroy(true, { children: true });
         } catch {
-          // Pixi may throw if destroyed before fully initialized (React StrictMode double-invoke)
+          // Pixi may throw if destroyed before fully initialised (StrictMode double-invoke)
         }
         app = null;
       }
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   return <div className="rowing-scene" ref={containerRef} />;
 }
