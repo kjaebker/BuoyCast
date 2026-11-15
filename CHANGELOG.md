@@ -7,6 +7,8 @@ can include breaking changes; they're called out below.
 
 ## Unreleased
 
+## 0.3.1 — 2026-11-14
+
 ### Changed
 - Strava and HTTP export controls only appear when they're set up. The
   completion screen shows the export's delivery status when an export URL
