@@ -3,7 +3,7 @@
 #
 #   curl -fsSL https://github.com/kjaebker/BuoyCast/releases/latest/download/install.sh | sudo bash
 #
-# Options (pass after `bash -s --` when piping, e.g. `| sudo bash -s -- --version v0.2.0`):
+# Options (pass after `bash -s --` when piping, e.g. `| sudo bash -s -- --version v0.3.0`):
 #   --version vX.Y.Z   install a specific release instead of the latest
 #   --tarball PATH     install from a locally built release tarball
 #   --repo OWNER/NAME  install from a fork's releases
