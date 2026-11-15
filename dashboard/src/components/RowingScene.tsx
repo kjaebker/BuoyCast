@@ -166,7 +166,7 @@ export function RowingScene({ strokeRate, pace, isActive, isPaused }: RowingScen
         fg.tileScale.set(fgScale);
 
         // Snap the rower's scale to whole device pixels so its pixels stay even.
-        const scale = Math.max(1, Math.round((H / 76) * dpr)) / dpr;
+        const scale = Math.max(1, Math.round((H / 100) * dpr)) / dpr;
         rower.scale.set(Math.min(scale, (W * 0.8) / SPRITE_W));
         rower.x = Math.round(W / 2);
         rowerBaseY = Math.round(H * WATER_FRAC);
