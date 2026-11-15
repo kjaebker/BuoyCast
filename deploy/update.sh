@@ -73,14 +73,18 @@ PY
 }
 
 # Directory name of the active release (under releases/), or empty.
-current_release() { [[ -L "$CURRENT_LINK" ]] && basename "$(readlink -f "$CURRENT_LINK")" || true; }
+current_release() {
+    if [[ -L "$CURRENT_LINK" ]]; then basename "$(readlink -f "$CURRENT_LINK")"; fi
+}
 
 project_version() {  # project_version <dir containing pyproject.toml>
     python3 -c 'import sys,tomllib; print(tomllib.load(open(sys.argv[1],"rb"))["project"]["version"])' \
         "$1/pyproject.toml" 2>/dev/null || true
 }
 
-current_version() { [[ -L "$CURRENT_LINK" ]] && project_version "$CURRENT_LINK" || true; }
+current_version() {
+    if [[ -L "$CURRENT_LINK" ]]; then project_version "$CURRENT_LINK"; fi
+}
 
 switch_to() {  # switch_to <release-dir-name>; atomic symlink swap
     ln -sfn "releases/$1" "$INSTALL_DIR/.current.tmp"

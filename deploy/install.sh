@@ -99,7 +99,10 @@ chmod 0755 "$INSTALL_DIR" "$INSTALL_DIR/releases"
 # ── Release ──────────────────────────────────────────────────────────
 # Use update.sh from alongside this script (local checkout / extracted
 # release); otherwise fetch the one published with the release.
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || true)"
+SCRIPT_DIR=""
+if script_parent="$(dirname "${BASH_SOURCE[0]:-$0}")" && [[ -d "$script_parent" ]]; then
+    SCRIPT_DIR="$(cd "$script_parent" && pwd)"
+fi
 UPDATER="$(mktemp)"
 trap 'rm -f "$UPDATER"' EXIT
 if [[ -n "$SCRIPT_DIR" && -f "$SCRIPT_DIR/update.sh" ]]; then
