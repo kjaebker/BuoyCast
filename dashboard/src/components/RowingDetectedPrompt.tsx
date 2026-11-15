@@ -1,7 +1,9 @@
 /**
  * RowingDetectedPrompt — modal that appears when rowing is detected while idle.
  *
- * Counts down 5 seconds and auto-starts the workout unless the user dismisses.
+ * Counts down COUNTDOWN_S seconds and auto-starts the workout unless the user
+ * dismisses. "Start now" takes focus and is the big target; "Not now" is a
+ * quieter, separated button so a mid-stroke tap doesn't cancel by accident.
  * Backdrop click and the X button both dismiss (via onOpenChange → onDismiss).
  */
 
@@ -14,7 +16,6 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
-  DialogFooter,
 } from "@/components/ui/dialog";
 
 const COUNTDOWN_S = 10;
@@ -65,15 +66,19 @@ export function RowingDetectedPrompt({ onStart, onDismiss }: Props) {
           />
         </div>
 
-        <DialogFooter>
-          <Button variant="ghost" onClick={onDismiss}>
-            Don't start
-          </Button>
-          <Button onClick={onStart}>
-            <Play className="mr-2 h-4 w-4" />
+        <div className="mt-2 flex flex-col gap-4">
+          <Button autoFocus className="h-16 w-full text-lg" onClick={onStart}>
+            <Play className="mr-2 h-5 w-5" />
             Start now
           </Button>
-        </DialogFooter>
+          <Button
+            variant="ghost"
+            className="h-16 w-full text-base text-muted-foreground"
+            onClick={onDismiss}
+          >
+            Not now
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   );

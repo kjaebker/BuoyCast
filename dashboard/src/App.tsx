@@ -42,7 +42,7 @@ function App() {
   };
 
   return (
-    <div className="dark relative isolate flex min-h-dvh flex-col overflow-hidden bg-background text-foreground">
+    <div className="dark relative isolate flex min-h-dvh flex-col overflow-clip bg-background text-foreground">
       <div className="pointer-events-none absolute inset-x-0 top-0 h-72 bg-[radial-gradient(ellipse_at_top,color-mix(in_oklch,var(--color-primary)_22%,transparent)_0%,color-mix(in_oklch,var(--color-primary)_12%,transparent)_28%,transparent_74%)] opacity-80 blur-[2px]" />
       <div className="pointer-events-none absolute right-[-4rem] top-28 h-48 w-48 rounded-full bg-[color-mix(in_oklch,var(--color-secondary)_36%,transparent)] blur-3xl" />
       <div className="pointer-events-none absolute left-[-5rem] top-72 h-56 w-56 rounded-full bg-[color-mix(in_oklch,var(--color-primary)_16%,transparent)] blur-3xl" />

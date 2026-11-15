@@ -53,7 +53,8 @@ export function WorkoutControls({ workoutState }: WorkoutControlsProps) {
   if (workoutState === "SUMMARY") return null;
 
   return (
-    <div className="border-t border-border bg-card p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+    // Pinned to the bottom of the viewport so Pause/End are always reachable.
+    <div className="sticky bottom-0 z-20 border-t border-border bg-card/90 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur-md">
       <div className="flex gap-3 justify-center">
         {workoutState === "IDLE" && (
           <Button
