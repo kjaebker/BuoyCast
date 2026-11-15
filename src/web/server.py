@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.requests import Request
 
 from src.events import EventBus, EventType
-from src.models import RowingMetrics, WorkoutState
+from src.models import RowingMetrics, StrokeEvent, WorkoutState
 from src.updates import UPDATE_HELPER, UpdateInfo, check_for_update, current_version
 from src.web.routes.settings import router as settings_router
 from src.web.routes.strava import router as strava_router
@@ -333,6 +333,7 @@ async def _ws_broadcast_loop(app_state: AppState) -> None:
         EventType.S4_DISCONNECTED,
         EventType.TICKR_CONNECTED,
         EventType.TICKR_DISCONNECTED,
+        EventType.STROKE,
     ]
 
     source_queues = [bus.subscribe(et) for et in event_types]
@@ -383,6 +384,10 @@ async def _ws_broadcast_loop(app_state: AppState) -> None:
                             "paused": reader.paused if reader else False,
                         },
                     }
+                )
+            elif event.type == EventType.STROKE and isinstance(event.data, StrokeEvent):
+                msg_json = _json_dumps(
+                    {"type": "stroke", "data": event.data.model_dump(mode="json")}
                 )
             elif event.type in (EventType.TICKR_CONNECTED, EventType.TICKR_DISCONNECTED):
                 reader = app_state.tickr_reader

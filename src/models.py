@@ -26,6 +26,20 @@ class StravaUploadStatus(str, Enum):
     SKIPPED = "SKIPPED"
 
 
+class StrokePhase(str, Enum):
+    """Which part of the stroke just began."""
+
+    DRIVE = "drive"  # catch: S4 "SS" (stroke start)
+    RECOVERY = "recovery"  # finish: S4 "SE" (stroke end)
+
+
+class StrokeEvent(BaseModel):
+    """A stroke boundary pushed by the S4, used to sync the dashboard animation."""
+
+    phase: StrokePhase
+    timestamp: datetime
+
+
 class RowingMetrics(BaseModel):
     """Unified real-time data from S4 + TICKR, shared across all components."""
 

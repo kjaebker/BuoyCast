@@ -22,6 +22,8 @@ class EventType(str, Enum):
     MERGED_METRICS = "merged_metrics"
     IDLE_WARNING = "idle_warning"
     STRAVA_UPLOAD_STATUS = "strava_upload_status"
+    # Pushed by the S4 the instant each drive starts/ends (SS/SE); data: StrokeEvent
+    STROKE = "stroke"
 
 
 @dataclass(slots=True)

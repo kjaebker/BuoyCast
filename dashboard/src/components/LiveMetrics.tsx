@@ -13,12 +13,13 @@ import { formatTime, formatPace, formatDistance, formatNum } from "@/lib/format"
 import { MetricSparkline } from "./MetricSparkline";
 import { RowingScene } from "./RowingScene";
 import type { RowingMetrics, WorkoutState } from "@/types";
-import type { MetricsHistory } from "@/hooks/useWorkoutSocket";
+import type { MetricsHistory, SubscribeStrokes } from "@/hooks/useWorkoutSocket";
 
 type LiveMetricsProps = {
   metrics: RowingMetrics | null;
   history: MetricsHistory;
   workoutState: WorkoutState;
+  subscribeStrokes: SubscribeStrokes;
 };
 
 type MetricTone = "ember" | "teal" | "rose" | "slate";
@@ -102,7 +103,12 @@ const ACTIVE_MESSAGES = [
   "Keep the rate",
 ] as const;
 
-export function LiveMetrics({ metrics, history, workoutState }: LiveMetricsProps) {
+export function LiveMetrics({
+  metrics,
+  history,
+  workoutState,
+  subscribeStrokes,
+}: LiveMetricsProps) {
   const now = useNow(500);
 
   // Stroke rate holds its last value briefly, then decays to 0 after 3 s
@@ -171,6 +177,7 @@ export function LiveMetrics({ metrics, history, workoutState }: LiveMetricsProps
         pace={metrics?.pace_s_per_500m ?? null}
         isActive={workoutState === "ACTIVE"}
         isPaused={workoutState === "PAUSED"}
+        subscribeStrokes={subscribeStrokes}
       />
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">

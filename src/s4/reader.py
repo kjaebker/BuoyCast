@@ -2,6 +2,11 @@
 
 Connects via USB CDC serial, performs handshake, polls memory addresses
 at configured intervals, and publishes RowingMetrics via the event bus.
+
+While connected, a single line-reader task owns the serial input: it hands
+memory-read responses to the poll request waiting for that address, and
+publishes the S4's spontaneous SS/SE (stroke start/end) messages as STROKE
+events the moment they arrive, so the dashboard can sync to real strokes.
 """
 
 from __future__ import annotations
@@ -14,7 +19,7 @@ from typing import Protocol
 
 from src.config import S4Settings
 from src.events import EventBus, EventType
-from src.models import RowingMetrics
+from src.models import RowingMetrics, StrokeEvent, StrokePhase
 from src.s4.protocol import (
     ADDR_AVG_SPEED,
     ADDR_CALORIES,
@@ -28,6 +33,8 @@ from src.s4.protocol import (
     LINE_ENDING,
     POLL_ADDRESSES,
     RESP_IV,
+    RESP_SE,
+    RESP_SS,
     RESP_WR,
     ProtocolError,
     avg_speed_to_pace,
@@ -43,6 +50,9 @@ from src.s4.protocol import (
 )
 
 logger = logging.getLogger(__name__)
+
+# How long a poll waits for its memory-read response (the S4 answers in ~6 ms).
+RESPONSE_TIMEOUT_S = 0.5
 
 
 class AsyncSerial:
@@ -116,6 +126,9 @@ class S4Reader:
 
         # Rolling power buffer — 20 samples at 4 Hz ≈ 5 seconds
         self._power_buffer: deque[float] = deque(maxlen=20)
+
+        # Poll requests awaiting a response, keyed by 3-hex-char address.
+        self._pending: dict[str, asyncio.Future[int]] = {}
 
     @property
     def connected(self) -> bool:
@@ -257,76 +270,104 @@ class S4Reader:
             logger.info("S4 disconnected")
 
     async def _poll_loop(self) -> None:
-        """Poll S4 memory addresses and publish metrics.
-
-        Sequential: send one IRD command then read until we get the matching
-        IDD response (discarding spontaneous PINGs/SS/SE in between).
-        """
+        """Poll S4 memory addresses and publish metrics, while a line reader
+        task consumes everything the S4 sends (responses and stroke events)."""
         interval = 1.0 / self._settings.poll_interval_hz
+        loop = asyncio.get_running_loop()
         first_cycle = True
+        line_reader = asyncio.create_task(self._line_reader())
 
-        while self._running and self._connected and not self._paused:
-            cycle_start = asyncio.get_running_loop().time()
-            hits = 0
+        try:
+            while self._running and self._connected and not self._paused:
+                cycle_start = loop.time()
+                hits = 0
 
-            # Flush pulse-count messages (P02/P03 at 40 Hz when rowing) that
-            # accumulated since the last cycle, so they don't burn our retries.
-            await self._serial.flush_input()
+                for addr in POLL_ADDRESSES:
+                    if not self._running or not self._connected or self._paused:
+                        break
+                    if line_reader.done():
+                        line_reader.result()  # re-raise the serial error
 
-            for addr in POLL_ADDRESSES:
-                if not self._running or not self._connected or self._paused:
-                    break
-
-                cmd = build_read_command(addr)
-                logger.debug("S4 >> %s", cmd)
-                await self._send(cmd)
-
-                # Read until we get the matching ID response or time out.
-                # Up to 15 reads to absorb any spontaneous messages that arrive
-                # between the command and its response.
-                for _ in range(15):
+                    future: asyncio.Future[int] = loop.create_future()
+                    self._pending[addr.address] = future
+                    cmd = build_read_command(addr)
+                    logger.debug("S4 >> %s", cmd)
                     try:
-                        line = await self._read_line()
+                        await self._send(cmd)
+                        self._values[addr.address] = await asyncio.wait_for(
+                            future, timeout=RESPONSE_TIMEOUT_S
+                        )
+                        hits += 1
                     except TimeoutError:
                         logger.debug("S4 timeout waiting for response to %s", cmd)
-                        break
-                    except OSError:
-                        raise
+                    finally:
+                        self._pending.pop(addr.address, None)
 
-                    logger.debug("S4 << %r", line)
+                if first_cycle:
+                    logger.info(
+                        "S4 first poll cycle complete: %d/%d responses",
+                        hits,
+                        len(POLL_ADDRESSES),
+                    )
+                    first_cycle = False
 
-                    try:
-                        _, addr_hex, value = parse_response(line)
-                    except ProtocolError as e:
-                        logger.debug("Skipping malformed response: %s", e)
-                        continue
+                metrics = self._build_metrics()
+                await self._bus.emit(EventType.METRICS_UPDATE, data=metrics)
 
-                    if addr_hex == addr.address and value is not None:
-                        self._values[addr_hex] = value
-                        hits += 1
-                        break
-                    elif addr_hex is None:
-                        # Spontaneous message (PING, SS, SE) — discard and keep reading
-                        continue
+                sleep_time = interval - (loop.time() - cycle_start)
+                if sleep_time > 0:
+                    await asyncio.sleep(sleep_time)
+        finally:
+            line_reader.cancel()
+            try:
+                await line_reader
+            except (asyncio.CancelledError, Exception):
+                pass
+
+    async def _line_reader(self) -> None:
+        """Read every line from the S4 for the life of the connection.
+
+        Memory-read responses resolve the matching pending poll; SS/SE become
+        STROKE events immediately; PING and pulse counts (P02/P03 at ~40 Hz
+        while rowing) are ignored. A serial error fails all pending polls so
+        the poll loop raises and the run loop reconnects.
+        """
+        try:
+            while True:
+                try:
+                    line = await self._read_line()
+                except TimeoutError:
+                    continue  # serial read timeout with nothing to read
+
+                try:
+                    resp_type, addr_hex, value = parse_response(line)
+                except ProtocolError as e:
+                    logger.debug("Skipping malformed response: %s", e)
+                    continue
+
+                if resp_type == RESP_SS:
+                    await self._emit_stroke(StrokePhase.DRIVE)
+                elif resp_type == RESP_SE:
+                    await self._emit_stroke(StrokePhase.RECOVERY)
+                elif addr_hex is not None and value is not None:
+                    future = self._pending.get(addr_hex)
+                    if future is not None and not future.done():
+                        future.set_result(value)
                     else:
-                        # Stale response for a different address — discard
-                        logger.debug(
-                            "S4 stale response: expected %s got %s", addr.address, addr_hex
-                        )
+                        logger.debug("S4 unsolicited/stale response: %r", line)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            for future in self._pending.values():
+                if not future.done():
+                    future.set_exception(e)
+            raise
 
-            if first_cycle:
-                logger.info(
-                    "S4 first poll cycle complete: %d/%d responses", hits, len(POLL_ADDRESSES)
-                )
-                first_cycle = False
-
-            metrics = self._build_metrics()
-            await self._bus.emit(EventType.METRICS_UPDATE, data=metrics)
-
-            elapsed = asyncio.get_running_loop().time() - cycle_start
-            sleep_time = interval - elapsed
-            if sleep_time > 0:
-                await asyncio.sleep(sleep_time)
+    async def _emit_stroke(self, phase: StrokePhase) -> None:
+        await self._bus.emit(
+            EventType.STROKE,
+            data=StrokeEvent(phase=phase, timestamp=datetime.now(tz=UTC)),
+        )
 
     def _build_metrics(self) -> RowingMetrics:
         """Assemble latest polled values into a RowingMetrics model."""

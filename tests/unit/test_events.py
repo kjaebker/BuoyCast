@@ -21,6 +21,7 @@ class TestEventType:
             "s4_disconnected",
             "idle_warning",
             "strava_upload_status",
+            "stroke",
         }
         assert {e.value for e in EventType} == expected
 

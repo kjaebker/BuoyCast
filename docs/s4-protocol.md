@@ -113,6 +113,8 @@ Examples:
 
 **Pulse count (`P{XX}`):** Sent at 25ms intervals while the flywheel is moving. Value is the number of encoder pulses in that 25ms window. Can be used to derive instantaneous flywheel velocity (pulse_count × k = speed). At typical rowing pace these arrive at ~40 Hz — they will flood the serial buffer and must be discarded during IRD polling.
 
+**How BuoyCast reads the line:** while connected, one task in `S4Reader` reads every line continuously. Memory-read responses (`IDS`/`IDD`/`IDT`) resolve the poll request waiting for that address; `SS`/`SE` are published immediately as `STROKE` events (forwarded to the dashboard as `{"type": "stroke"}` WebSocket messages) so the animated rower can phase-lock to real strokes; `PING` and pulse counts are ignored. The input buffer is not flushed between polls, since that would drop stroke events.
+
 ---
 
 ## Memory Map

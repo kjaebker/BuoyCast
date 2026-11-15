@@ -9,9 +9,10 @@
  *   rower           — procedural sculler (see rowing/rowerSprite.ts), in
  *                     front so the near oar is never hidden
  *
- * The rower's pose follows a continuous stroke phase advanced at the live
- * stroke rate, and the scroll speed surges on the drive and glides on the
- * recovery, so the scene reads like real rowing rather than a frame loop.
+ * The rower's stroke is driven by a StrokeClock: phase-locked to the S4's
+ * live stroke events (catch/finish) when they arrive, otherwise free-running
+ * at the displayed stroke rate. The scroll speed surges on the drive and
+ * glides on the recovery.
  */
 
 import { useEffect, useRef } from "react";
@@ -24,6 +25,8 @@ import {
   WATERLINE_Y,
   buildRowerFrames,
 } from "@/components/rowing/rowerSprite";
+import { StrokeClock } from "@/components/rowing/strokeClock";
+import type { SubscribeStrokes } from "@/hooks/useWorkoutSocket";
 import "./RowingScene.css";
 
 type RowingSceneProps = {
@@ -31,13 +34,12 @@ type RowingSceneProps = {
   pace: number | null;
   isActive: boolean;
   isPaused: boolean;
+  subscribeStrokes?: SubscribeStrokes;
 };
 
 const ASSET_BASE = "/assets/rowing/";
 /** Global scroll speed scale. */
 const SCROLL_SCALE = 0.45;
-/** Phase just after the finish, where the rower settles when stopping. */
-const REST_PHASE = DRIVE_FRACTION + 0.04;
 /** Fraction of the scene height where the water surface sits. */
 const WATER_FRAC = 0.835;
 // Measured from the source images.
@@ -65,9 +67,23 @@ function surge(phase: number): number {
   return 1 - 0.1 * Math.sin((Math.PI * (phase - DRIVE_FRACTION)) / (1 - DRIVE_FRACTION));
 }
 
-export function RowingScene({ strokeRate, pace, isActive, isPaused }: RowingSceneProps) {
+export function RowingScene({
+  strokeRate,
+  pace,
+  isActive,
+  isPaused,
+  subscribeStrokes,
+}: RowingSceneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const liveRef = useRef<Live>({ isRowing: false, strokeRate: 0, boatSpeed: 0 });
+  const clockRef = useRef(new StrokeClock());
+
+  // Live stroke events from the S4 phase-lock the rower to the real stroke.
+  useEffect(() => {
+    if (!subscribeStrokes) return;
+    const clock = clockRef.current;
+    return subscribeStrokes((signal) => clock.onStroke(signal.phase, signal.at));
+  }, [subscribeStrokes]);
 
   const isRowing = isActive && !isPaused && (strokeRate ?? 0) > 0;
 
@@ -176,39 +192,24 @@ export function RowingScene({ strokeRate, pace, isActive, isPaused }: RowingScen
       layout(container.clientWidth || 375, sceneHeight());
 
       // ── Ticker ───────────────────────────────────────────────────
-      let phase = REST_PHASE;
-      let atRest = true;
-      let strokeRateNow = 0; // smoothed SPM
+      const clock = clockRef.current;
+      // Dev-only handle for inspecting stroke sync from the browser console.
+      if (import.meta.env.DEV) (window as unknown as { __strokeClock?: StrokeClock }).__strokeClock = clock;
       let speedNow = 0; // smoothed boat speed
       let bobTime = 0;
 
       app.ticker.add((ticker) => {
         const dt = Math.min(ticker.deltaMS, 100) / 1000; // seconds, clamped after tab switches
         const live = liveRef.current;
-        const smoothing = Math.min(dt * 2, 1); // ~0.5 s time constant
+        clock.tick(dt, performance.now(), live);
 
-        if (live.isRowing) {
-          atRest = false;
-          strokeRateNow += (live.strokeRate - strokeRateNow) * smoothing;
-        }
-
-        if (!atRest) {
-          // Keep at least a gentle rate so a stopping rower finishes the stroke.
-          const spm = live.isRowing ? strokeRateNow : Math.max(strokeRateNow, 16);
-          const prev = phase;
-          phase = (phase + (spm / 60) * dt) % 1;
-          const crossedRest =
-            (prev < REST_PHASE && phase >= REST_PHASE) || (prev > phase && phase >= REST_PHASE);
-          if (!live.isRowing && crossedRest) {
-            atRest = true;
-            phase = REST_PHASE;
-          }
-        }
-
-        rower.texture = atRest ? rowerFrames[FRAME_COUNT] : rowerFrames[Math.floor(phase * FRAME_COUNT) % FRAME_COUNT];
+        const pose = clock.posePhase();
+        rower.texture = clock.atRest
+          ? rowerFrames[FRAME_COUNT]
+          : rowerFrames[Math.floor(pose * FRAME_COUNT) % FRAME_COUNT];
 
         speedNow += (live.boatSpeed - speedNow) * Math.min(dt * 1.2, 1);
-        const spd = speedNow * (atRest ? 1 : surge(phase));
+        const spd = speedNow * (clock.atRest ? 1 : surge(pose));
 
         // Idle bob that fades out as the boat gets moving.
         bobTime += dt * 1.8;

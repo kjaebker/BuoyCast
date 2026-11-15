@@ -45,6 +45,18 @@ export type RowingMetrics = {
 
 // --- Workout record ---
 
+/** Mirrors src/models.py StrokePhase / StrokeEvent. */
+export const StrokePhase = {
+  DRIVE: "drive",
+  RECOVERY: "recovery",
+} as const;
+export type StrokePhase = (typeof StrokePhase)[keyof typeof StrokePhase];
+
+export type StrokeEvent = {
+  phase: StrokePhase;
+  timestamp: string;
+};
+
 export type WorkoutRecord = {
   id: string;
   started_at: string;

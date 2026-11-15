@@ -6,8 +6,8 @@
  * visibilitychange (handles iOS tab resume).
  */
 
-import { useCallback, useEffect, useState } from "react";
-import type { RowingMetrics, WorkoutState } from "@/types";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { RowingMetrics, StrokePhase, WorkoutState } from "@/types";
 
 const MAX_BACKOFF_MS = 30_000;
 const INITIAL_BACKOFF_MS = 1_000;
@@ -26,12 +26,20 @@ export type MetricsHistory = {
   lastHrAt: number | null;
 };
 
+/** A stroke boundary from the S4, stamped with the client's performance.now(). */
+export type StrokeSignal = { phase: StrokePhase; at: number };
+export type StrokeListener = (signal: StrokeSignal) => void;
+/** Subscribe to live stroke events; returns an unsubscribe function. */
+export type SubscribeStrokes = (listener: StrokeListener) => () => void;
+
 export type WorkoutSocketState = {
   metrics: RowingMetrics | null;
   history: MetricsHistory;
   workoutState: WorkoutState;
   connectionStatus: ConnectionStatus;
   dismissSummary: () => void;
+  /** Stroke events go to listeners directly (no re-render per stroke). */
+  subscribeStrokes: SubscribeStrokes;
 };
 
 const EMPTY_HISTORY: MetricsHistory = {
@@ -57,8 +65,18 @@ export function useWorkoutSocket(url?: string): WorkoutSocketState {
   const [workoutState, setWorkoutState] = useState<WorkoutState>("IDLE");
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>("disconnected");
+  const strokeListeners = useRef(new Set<StrokeListener>());
+
+  const subscribeStrokes = useCallback<SubscribeStrokes>((listener) => {
+    const listeners = strokeListeners.current;
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
+  }, []);
 
   useEffect(() => {
+    const listeners = strokeListeners.current;
     let mounted = true;
     let ws: WebSocket | null = null;
     let backoff = INITIAL_BACKOFF_MS;
@@ -84,6 +102,14 @@ export function useWorkoutSocket(url?: string): WorkoutSocketState {
             lastStroke: stroking ? { rate: m.stroke_rate!, at } : h.lastStroke,
             lastHrAt: hasHr ? at : h.lastHrAt,
           }));
+          break;
+        }
+        case "stroke": {
+          const signal: StrokeSignal = {
+            phase: (msg.data as { phase: StrokePhase }).phase,
+            at: performance.now(),
+          };
+          listeners.forEach((listener) => listener(signal));
           break;
         }
         case "workout_started":
@@ -168,5 +194,5 @@ export function useWorkoutSocket(url?: string): WorkoutSocketState {
     setMetrics(null);
   }, []);
 
-  return { metrics, history, workoutState, connectionStatus, dismissSummary };
+  return { metrics, history, workoutState, connectionStatus, dismissSummary, subscribeStrokes };
 }

@@ -14,7 +14,8 @@ import { SettingsScreen } from "@/components/SettingsScreen";
 import { Button } from "@/components/ui/button";
 
 function App() {
-  const { metrics, history, workoutState, connectionStatus, dismissSummary } = useWorkoutSocket();
+  const { metrics, history, workoutState, connectionStatus, dismissSummary, subscribeStrokes } =
+    useWorkoutSocket();
   const [showHistory, setShowHistory] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [historyKey, setHistoryKey] = useState(0);
@@ -100,7 +101,12 @@ function App() {
             <RecoveryBanner onDiscard={() => setHistoryKey((k) => k + 1)} />
           )}
 
-          <LiveMetrics metrics={metrics} history={history} workoutState={workoutState} />
+          <LiveMetrics
+            metrics={metrics}
+            history={history}
+            workoutState={workoutState}
+            subscribeStrokes={subscribeStrokes}
+          />
 
           {workoutState === "IDLE" && (
             <div className="px-4 pb-2">

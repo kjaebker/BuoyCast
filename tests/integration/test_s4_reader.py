@@ -152,22 +152,23 @@ class TestS4ReaderDisconnect:
     ):
         mock = MockSerial()
         mock.set_steady_state()
-        mock.set_disconnect_after(5)
 
         reader = S4Reader(mock, event_bus, fast_settings)
 
         q_connected = event_bus.subscribe(EventType.S4_CONNECTED)
+        q_disconnected = event_bus.subscribe(EventType.S4_DISCONNECTED)
 
         await reader.start()
 
         # First connection
         await asyncio.wait_for(q_connected.get(), timeout=2.0)
 
-        # After disconnect, the mock resets disconnect_after — set fresh state
-        # The reader should reconnect since reconnect_delay_s=0
-        # MockSerial.open() will succeed again after close()
-        # We need to re-arm the mock for the second connection
-        mock._disconnect_after = None  # Allow second connection to persist
+        # Pull the cable: the next read fails
+        mock.set_disconnect_after(0)
+        await asyncio.wait_for(q_disconnected.get(), timeout=3.0)
+
+        # Plug it back in; reconnect_delay_s=0 so the reader retries at once
+        mock._disconnect_after = None
 
         # Wait for second connection
         event = await asyncio.wait_for(q_connected.get(), timeout=3.0)
@@ -224,3 +225,67 @@ class TestS4ReaderLifecycle:
 
         await reader.stop()
         assert not reader.connected
+
+
+class TestS4ReaderStrokeEvents:
+    """SS/SE are pushed by the S4 at each catch/finish and must reach the bus."""
+
+    async def test_emits_stroke_events_for_ss_and_se(
+        self, event_bus: EventBus, fast_settings: S4Settings
+    ):
+        from src.models import StrokeEvent, StrokePhase
+
+        mock = MockSerial()
+        mock.set_steady_state()
+        reader = S4Reader(mock, event_bus, fast_settings)
+        q_connected = event_bus.subscribe(EventType.S4_CONNECTED)
+        q_stroke = event_bus.subscribe(EventType.STROKE)
+
+        await reader.start()
+        try:
+            await asyncio.wait_for(q_connected.get(), timeout=2.0)
+            mock.queue_raw_response(b"SS\r\n")
+            mock.queue_raw_response(b"SE\r\n")
+
+            first = await asyncio.wait_for(q_stroke.get(), timeout=2.0)
+            second = await asyncio.wait_for(q_stroke.get(), timeout=2.0)
+            assert isinstance(first.data, StrokeEvent)
+            assert first.data.phase == StrokePhase.DRIVE
+            assert second.data.phase == StrokePhase.RECOVERY
+        finally:
+            await reader.stop()
+
+    async def test_stroke_events_between_command_and_response_keep_polling_intact(
+        self, event_bus: EventBus, fast_settings: S4Settings
+    ):
+        """Interleaved SS/SE/PING/pulse lines must not desync memory reads."""
+        mock = MockSerial()
+        mock.set_steady_state(distance_m=777, stroke_count=42)
+        reader = S4Reader(mock, event_bus, fast_settings)
+        q_connected = event_bus.subscribe(EventType.S4_CONNECTED)
+        q_metrics = event_bus.subscribe(EventType.METRICS_UPDATE)
+        q_stroke = event_bus.subscribe(EventType.STROKE)
+
+        # Every memory read gets a burst of spontaneous lines in front of it.
+        original = mock._generate_read_response
+
+        async def noisy(size_char: str, addr: str) -> None:
+            for line in (b"SS\r\n", b"P02\r\n", b"PING\r\n", b"SE\r\n"):
+                await mock._response_queue.put(line)
+            await original(size_char, addr)
+
+        mock._generate_read_response = noisy  # type: ignore[method-assign]
+
+        await reader.start()
+        try:
+            await asyncio.wait_for(q_connected.get(), timeout=2.0)
+            # Skip the first cycle (may predate the patch's full effect), check the next.
+            await asyncio.wait_for(q_metrics.get(), timeout=3.0)
+            event = await asyncio.wait_for(q_metrics.get(), timeout=3.0)
+            m = event.data
+            assert isinstance(m, RowingMetrics)
+            assert m.distance_m == 777
+            assert m.stroke_count == 42
+            assert not q_stroke.empty()  # strokes were published along the way
+        finally:
+            await reader.stop()

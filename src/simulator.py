@@ -17,7 +17,7 @@ import random
 from datetime import UTC, datetime
 
 from src.events import EventBus, EventType
-from src.models import RowingMetrics
+from src.models import RowingMetrics, StrokeEvent, StrokePhase
 
 logger = logging.getLogger(__name__)
 
@@ -67,10 +67,19 @@ class SimulatedS4Reader:
     async def start(self) -> None:
         self._running = True
         self._task = asyncio.create_task(self._run_loop())
+        self._stroke_task = asyncio.create_task(self._stroke_loop())
         logger.info("SimulatedS4: started")
 
     async def stop(self) -> None:
         self._running = False
+        stroke_task = getattr(self, "_stroke_task", None)
+        if stroke_task:
+            stroke_task.cancel()
+            try:
+                await stroke_task
+            except asyncio.CancelledError:
+                pass
+            self._stroke_task = None
         if self._task:
             self._task.cancel()
             try:
@@ -105,6 +114,26 @@ class SimulatedS4Reader:
             self._elapsed_s += self._poll_interval_s
 
         await self._do_disconnect()
+
+    async def _stroke_loop(self) -> None:
+        """Emit SS/SE stroke events like the real S4, at the simulated rate."""
+        while self._running:
+            if self._paused or not self._connected:
+                await asyncio.sleep(0.2)
+                continue
+            rate, _ = self._phase_metrics(self._elapsed_s)
+            period = 60.0 / max(rate, 10.0)
+            drive = max(0.6, min(period * 0.45, random.gauss(1.0, 0.05)))
+            await self._bus.emit(
+                EventType.STROKE,
+                data=StrokeEvent(phase=StrokePhase.DRIVE, timestamp=datetime.now(tz=UTC)),
+            )
+            await asyncio.sleep(drive)
+            await self._bus.emit(
+                EventType.STROKE,
+                data=StrokeEvent(phase=StrokePhase.RECOVERY, timestamp=datetime.now(tz=UTC)),
+            )
+            await asyncio.sleep(max(0.2, period - drive + random.gauss(0, 0.04)))
 
     def _build_metrics(self) -> RowingMetrics:
         t = self._elapsed_s
