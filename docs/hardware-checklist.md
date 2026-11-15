@@ -4,9 +4,9 @@ Run through this checklist after `install.sh` completes and the service is runni
 Each section is independent — work through them in order.
 
 Prerequisites:
-- Pi is running BuoyCast (`sudo systemctl status waterrower` → `active (running)`)
-- You are SSH'd in or watching logs: `journalctl -u waterrower -f`
-- API is reachable: `curl -s http://waterrower.local:8080/api/status`
+- Pi is running BuoyCast (`sudo systemctl status buoycast` → `active (running)`)
+- You are SSH'd in or watching logs: `journalctl -u buoycast -f`
+- API is reachable: `curl -s http://buoycast.local:8080/api/status`
 
 ---
 
@@ -44,7 +44,7 @@ cdc_acm 1-1:1.0: ttyACM0: USB ACM device
 ### 1.3 Service log — S4 connected
 
 ```bash
-journalctl -u waterrower -f
+journalctl -u buoycast -f
 ```
 
 **Expected log line:**
@@ -55,7 +55,7 @@ INFO  src.s4.reader  S4 connected on /dev/ttyACM0
 ### 1.4 API status — s4_connected true
 
 ```bash
-curl -s http://waterrower.local:8080/api/status | python3 -m json.tool
+curl -s http://buoycast.local:8080/api/status | python3 -m json.tool
 ```
 
 **Expected:**
@@ -71,7 +71,7 @@ curl -s http://waterrower.local:8080/api/status | python3 -m json.tool
 Sit on the rower and take a few strokes, then:
 
 ```bash
-curl -s http://waterrower.local:8080/api/status | python3 -m json.tool
+curl -s http://buoycast.local:8080/api/status | python3 -m json.tool
 ```
 
 **Expected:** `last_metrics_ts` is a recent ISO timestamp (within the last few seconds)
@@ -82,7 +82,7 @@ curl -s http://waterrower.local:8080/api/status | python3 -m json.tool
 - **Expected log:** `S4 disconnected — will retry`; `s4_connected: false` in `/api/status`
 - [ ] Plug the cable back in
 - **Expected log:** `S4 connected on /dev/ttyACM0`; `s4_connected: true` in `/api/status`
-- [ ] Service must still be running (`systemctl status waterrower` → no crash)
+- [ ] Service must still be running (`systemctl status buoycast` → no crash)
 
 ---
 
@@ -96,7 +96,7 @@ curl -s http://waterrower.local:8080/api/status | python3 -m json.tool
 ### 2.2 Service log — TICKR connected
 
 ```bash
-journalctl -u waterrower -f
+journalctl -u buoycast -f
 ```
 
 **Expected log line (within ~30 seconds of service start):**
@@ -107,7 +107,7 @@ INFO  src.ble.tickr  TICKR connected: A4:34:F1:XX:XX:XX
 ### 2.3 API status — tickr_connected true
 
 ```bash
-curl -s http://waterrower.local:8080/api/status | python3 -m json.tool
+curl -s http://buoycast.local:8080/api/status | python3 -m json.tool
 ```
 
 **Expected:**
@@ -120,7 +120,7 @@ curl -s http://waterrower.local:8080/api/status | python3 -m json.tool
 
 ### 2.4 HR in live metrics
 
-Open the dashboard at `http://waterrower.local:8080` — the HR tile in the status bar should show a live BPM value (not `–`).
+Open the dashboard at `http://buoycast.local:8080` — the HR tile in the status bar should show a live BPM value (not `–`).
 
 ### 2.5 TICKR staleness handling
 
@@ -141,11 +141,16 @@ Open the dashboard at `http://waterrower.local:8080` — the HR tile in the stat
 
 ## 3 — FTMS BLE broadcast to Peloton
 
-> **Note:** The BlueZ D-Bus GATT server is implemented as a placeholder in this release.
-> The byte-packing logic is complete and tested. Full advertising requires BlueZ registration
-> (see `src/ble/ftms.py` `_setup_ble`). Until that is completed, use **nRF Connect** to verify
-> the data stream is being packed correctly, and perform Peloton pairing manually once the
-> BlueZ implementation is finalised.
+BuoyCast advertises over Bluetooth LE as an FTMS (Fitness Machine Service)
+rower named **BuoyCast**. The Peloton **app** (iPad, iPhone or Android) can pair
+with third-party FTMS rowers from inside a rowing class. This needs an App+ or
+All-Access membership. Pairing is done in the app, not in the Bike or Tread
+touchscreen's Bluetooth settings.
+
+> **Status:** Peloton pairing has not been confirmed to work yet. With v0.3.0,
+> BuoyCast did not appear in the Peloton iPad app's device list. Work through
+> 3.2 → 3.4 in order and note where it stops working: that tells us whether the
+> problem is the advertisement, the data, or Peloton's device filter.
 
 ### 3.1 FTMS data packing — unit test verification
 
@@ -159,20 +164,37 @@ pytest tests/unit/test_ftms_packing.py -v
 
 ### 3.2 BLE advertising visible (nRF Connect)
 
-Install **nRF Connect for Mobile** (iOS or Android) on your phone.
+First check that advertising started on the Pi:
 
-- [ ] Open nRF Connect → **Scanner** tab
-- [ ] Tap **Scan**
-- Look for a device named **BuoyCast**
-- [ ] It should appear with **Fitness Machine** (UUID `0x1826`) in its advertised services
+```bash
+journalctl -u buoycast | grep -i ftms
+```
 
-> If BuoyCast is not visible, the BlueZ registration needs to be completed first.
-> Check logs: `journalctl -u waterrower | grep -i btms`
+**Expected:** `FTMS advertising as 'BuoyCast' — service UUID 00001826-…`. A
+`FTMS BLE setup failed after 4 attempts` line means the adapter refused the
+registration. Run `bluetoothctl show` and check `Powered: yes`.
+
+Install **nRF Connect for Mobile** on the **same iPad** you'll use for Peloton,
+so both apps see the same radio.
+
+- [ ] Open nRF Connect → **Scanner** tab → **Scan**
+- [ ] A device named **BuoyCast** appears
+- [ ] Tap the row (not **Connect**) to expand the advertisement details:
+  - [ ] **Complete Local Name:** `BuoyCast`
+  - [ ] **Service UUIDs** include **Fitness Machine** (`0x1826`)
+  - [ ] **Service Data:** write down whether there is an entry for `0x1826`
+    and its bytes. The FTMS spec has a rower advertise `01 10 00` there
+    ("available", machine type = rower). BuoyCast doesn't send this yet,
+    and its absence is the main suspect for Peloton not listing BuoyCast.
+
+> If BuoyCast doesn't appear at all, restart the service
+> (`sudo systemctl restart buoycast`), wait ~10 s, and scan again.
 
 ### 3.3 Rower Data characteristic — nRF Connect
 
 - [ ] Tap **BuoyCast** in the scanner → **Connect**
 - [ ] Browse to **Fitness Machine Service** (0x1826)
+- [ ] Read **Fitness Machine Feature** (0x2ACC): it should return 8 bytes
 - [ ] Tap **Rower Data** characteristic (0x2AD1)
 - [ ] Tap the subscribe (notify) icon ▶
 - [ ] Take a few strokes on the rower
@@ -180,18 +202,38 @@ Install **nRF Connect for Mobile** (iOS or Android) on your phone.
 **Expected:** The raw hex value updates approximately once per second.
 Decode the first two bytes as a little-endian uint16 — these are the FTMS flags indicating which fields are present (stroke rate, distance, pace, power, HR).
 
+- [ ] **Disconnect** in nRF Connect, then force-quit it. Peloton needs to be
+  the only app connected to BuoyCast.
+
 ### 3.4 Peloton pairing
 
-- [ ] On the Peloton touchscreen: **More** → **Bluetooth** → **Heart Rate Monitor**
-  _(Peloton uses FTMS for row data, but surfaces it via the heart rate source selection for some models)_
-- [ ] Alternatively: **More** → **Settings** → **Fitness Equipment** → scan for BLE rowers
-- [ ] Select **BuoyCast** from the list
-- [ ] The Peloton should display stroke rate, pace, and distance from the S4 during rowing
+Before you start: BuoyCast is running, the S4 is connected, the iPad's
+Bluetooth is on, and the iPad is within a few metres of the Pi.
 
-> Peloton's exact menu path varies by software version. If the device does not appear,
-> ensure the Pi's Bluetooth is not connected to the TICKR on the same adapter — the Pi Zero 2W
-> has a single BT chip and supports simultaneous central + peripheral roles, but driver
-> stability may vary.
+- [ ] Open the **Peloton app** on the iPad → **Rowing** → pick any class
+- [ ] On the class screen, choose **Connect a Bluetooth Device**
+  _(the wording can vary slightly between app versions; it's the
+  Bluetooth / device option shown for rowing classes)_
+- [ ] **BuoyCast** appears in the list → select it
+- [ ] Start the class and row: **stroke rate** and **pace** from the S4 show on screen
+- [ ] After the class, the workout summary shows the rowing data
+
+**If BuoyCast doesn't appear in Peloton's list:**
+
+- [ ] Confirm it still shows in nRF Connect's scanner on the same iPad
+  (3.2). If nRF Connect sees it but Peloton doesn't, Peloton is filtering it
+  out. Note the **Service Data** result from 3.2, since that's the likely
+  reason.
+- [ ] Turn the iPad's Bluetooth off and on, and force-quit the Peloton app
+  (iOS caches Bluetooth scan results).
+- [ ] Make sure nothing else is connected to BuoyCast (nRF Connect, the
+  WaterRower app).
+- [ ] Rule out the shared radio: the Pi Zero 2W has one Bluetooth chip that
+  also reads the TICKR. Set `[heart_rate] enabled = false` in
+  `/opt/buoycast/config.toml`, run `sudo systemctl restart buoycast`, and try
+  again.
+- [ ] Check that the Peloton membership is App+ or All-Access. Third-party
+  rower pairing isn't offered on the free or App One tiers.
 
 ---
 
@@ -199,7 +241,7 @@ Decode the first two bytes as a little-endian uint16 — these are the FTMS flag
 
 ### 4.1 Start a workout via dashboard
 
-- [ ] Open `http://waterrower.local:8080` on your phone
+- [ ] Open `http://buoycast.local:8080` on your phone
 - [ ] Tap **Start Workout**
 - [ ] `/api/status` → `workout_state: "ACTIVE"`
 
@@ -223,7 +265,7 @@ Decode the first two bytes as a little-endian uint16 — these are the FTMS flag
 ### 4.5 Data persisted to SQLite
 
 ```bash
-curl -s http://waterrower.local:8080/api/workouts | python3 -m json.tool
+curl -s http://buoycast.local:8080/api/workouts | python3 -m json.tool
 ```
 
 **Expected:** the just-completed workout appears with `ended_at` set, `total_distance_m > 0`, and `total_strokes > 0`
@@ -250,11 +292,11 @@ Alternatively, upload a past workout from the history sheet:
 
 ```bash
 WORKOUT_ID="<id from /api/workouts>"
-curl -X POST http://waterrower.local:8080/api/workouts/$WORKOUT_ID/upload
+curl -X POST http://buoycast.local:8080/api/workouts/$WORKOUT_ID/upload
 # → 202 Accepted
 
 # Poll for result
-curl -s http://waterrower.local:8080/api/workouts/$WORKOUT_ID | python3 -m json.tool
+curl -s http://buoycast.local:8080/api/workouts/$WORKOUT_ID | python3 -m json.tool
 # strava_upload_status should become "UPLOADED"
 ```
 
@@ -278,7 +320,7 @@ pidstat -u -r -p $(pgrep -f "src.main") 5 3
 
 ```bash
 # Memory cap from systemd (should not be hit)
-systemctl show waterrower --property=MemoryMax
+systemctl show buoycast --property=MemoryMax
 # → MemoryMax=209715200  (200 MiB)
 ```
 
@@ -296,8 +338,8 @@ If resource usage is too high, see task 11.2 (performance profiling).
 | TICKR staleness | HR → `–` within 3 s of signal loss |
 | TICKR reconnect | Auto-reconnects without service crash |
 | FTMS packing | Unit tests pass |
-| FTMS advertising | BuoyCast visible in nRF Connect (once BlueZ impl complete) |
-| Peloton pairing | Rower data visible on Peloton (once BlueZ impl complete) |
+| FTMS advertising | BuoyCast visible in nRF Connect with service `0x1826`; Service Data result noted |
+| Peloton pairing | BuoyCast listed in a Peloton app rowing class; stroke rate + pace shown |
 | Full workout | Start → row → pause → resume → end → summary |
 | Data persistence | Workout in `/api/workouts` with correct stats |
 | FIT file | `.fit` file present in `data/fit/` |
