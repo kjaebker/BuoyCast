@@ -1,8 +1,10 @@
 ﻿/**
- * CompletionScreen - workout summary with Strava upload option.
+ * CompletionScreen - workout summary.
  *
- * Shows summary stats, optional HR chart, Upload to Strava button,
- * and Maybe Later to dismiss.
+ * Shows summary stats and an optional HR chart. Integrations only appear
+ * when they are set up: the HTTP export's delivery status when an export URL
+ * is configured, and the Strava upload when a Strava account is connected.
+ * With neither, a single Done button dismisses the screen.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -30,7 +32,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { formatTime, formatPace, formatDistance, formatNum } from "@/lib/format";
 import * as api from "@/lib/api";
-import type { WorkoutRecord, StrokeRecord } from "@/types";
+import { exportStatusClassName, exportStatusLabel } from "@/lib/exportStatus";
+import { exportConfigured, stravaReady } from "@/lib/integrations";
+import type { ExportInfo, StravaStatus, WorkoutRecord, StrokeRecord } from "@/types";
 
 type CompletionScreenProps = {
   onDismiss: () => void;
@@ -91,14 +95,46 @@ export function CompletionScreen({ onDismiss }: CompletionScreenProps) {
   const [uploadState, setUploadState] = useState<UploadState>("idle");
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [includeHr, setIncludeHr] = useState(true);
+  const [strava, setStrava] = useState<StravaStatus | null>(null);
+  const [exportInfo, setExportInfo] = useState<ExportInfo | null>(null);
+  // Latest copy of the workout, refreshed while its export is in flight.
+  const [exported, setExported] = useState<WorkoutRecord | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     api.listWorkouts(1, 0).then(setWorkouts).catch(() => {});
     api.getSettings().then(data => setIncludeHr(data.include_hr_in_strava_upload)).catch(() => {});
+    api.getStravaStatus().then(setStrava).catch(() => {});
+    api.getExportStatus().then(setExportInfo).catch(() => {});
   }, []);
 
   const workout = workouts[0] ?? null;
+  const stravaOn = stravaReady(strava);
+  const exportOn = exportConfigured(exportInfo);
+
+  // The backend sends the workout as soon as it's saved; follow it until it
+  // leaves PENDING/SENDING (or give up after ~40 s and show what we have).
+  useEffect(() => {
+    if (!workout || !exportOn) return;
+    let cancelled = false;
+    (async () => {
+      for (let i = 0; i < 20 && !cancelled; i++) {
+        try {
+          const w = await api.getWorkout(workout.id);
+          if (cancelled) return;
+          setExported(w);
+          if (w.export_status !== "PENDING" && w.export_status !== "SENDING") return;
+          if (w.export_status === "PENDING" && !exportInfo?.auto_send) return;
+        } catch {
+          // keep trying
+        }
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [workout, exportOn, exportInfo?.auto_send]);
 
   useEffect(() => {
     if (workout) {
@@ -183,7 +219,9 @@ export function CompletionScreen({ onDismiss }: CompletionScreenProps) {
             Strong finish.
           </h2>
           <p className="mt-2 max-w-xl text-sm text-muted-foreground">
-            Your workout is saved locally and ready for Strava whenever you are.
+            {stravaOn
+              ? "Your workout is saved and ready for Strava whenever you are."
+              : "Your workout is saved."}
           </p>
         </div>
 
@@ -283,7 +321,45 @@ export function CompletionScreen({ onDismiss }: CompletionScreenProps) {
         )}
 
         <div className="mt-6 space-y-3">
-          {uploadState === "done" ? (
+          {exportOn && (() => {
+            const status = exported?.export_status ?? "PENDING";
+            const inFlight = status === "PENDING" || status === "SENDING";
+            return (
+              <div className="flex items-center gap-3 rounded-2xl border border-border/80 bg-card/75 px-4 py-4">
+                {inFlight && exportInfo?.auto_send ? (
+                  <div className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-secondary-foreground/30 border-t-secondary-foreground" />
+                ) : status === "SENT" ? (
+                  <CheckCircle className="h-6 w-6 shrink-0 text-secondary-foreground" />
+                ) : status === "FAILED" || status === "REJECTED" ? (
+                  <AlertCircle className="h-6 w-6 shrink-0 text-destructive" />
+                ) : null}
+                <div className="min-w-0 flex-1">
+                  <div className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    Export to {exportInfo?.target_host}
+                  </div>
+                  <div className="mt-0.5 truncate text-sm text-foreground">
+                    {status === "SENT"
+                      ? "Delivered"
+                      : status === "FAILED"
+                        ? "Couldn't reach it. BuoyCast will keep retrying."
+                        : exported?.export_error ??
+                          (inFlight
+                            ? exportInfo?.auto_send
+                              ? "Sending..."
+                              : "Auto-send is off. Send it from Workout History."
+                            : "Not sent")}
+                  </div>
+                </div>
+                <span
+                  className={`shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${exportStatusClassName[status]}`}
+                >
+                  {exportStatusLabel[status]}
+                </span>
+              </div>
+            );
+          })()}
+
+          {!stravaOn ? null : uploadState === "done" ? (
             <div
               className="flex items-center gap-3 rounded-2xl border border-[color-mix(in_oklch,var(--color-secondary)_32%,transparent)] bg-[color-mix(in_oklch,var(--color-secondary)_16%,transparent)] px-4 py-4"
               style={{ animation: "success-pop 0.4s cubic-bezier(0.34,1.3,0.64,1) forwards" }}
@@ -337,7 +413,7 @@ export function CompletionScreen({ onDismiss }: CompletionScreenProps) {
             </>
           )}
 
-          {uploadState === "done" ? (
+          {!stravaOn || uploadState === "done" ? (
             <Button
               size="lg"
               className="h-14 w-full text-lg"

@@ -1,5 +1,6 @@
 ﻿/**
- * StatusBar - S4 + TICKR connection status, Strava auth, HR preview.
+ * StatusBar - S4 + TICKR connection status, HR preview, and Strava status
+ * (only when Strava is configured).
  * Responsive: collapses to icons on iPhone.
  */
 
@@ -7,6 +8,7 @@ import { useEffect, useState } from "react";
 import { Wifi, WifiOff, Heart, HeartOff, Upload, UploadCloud, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getStravaStatus } from "@/lib/api";
+import { stravaConfigured } from "@/lib/integrations";
 import type { StravaStatus } from "@/types";
 import type { WorkoutSocketState } from "@/hooks/useWorkoutSocket";
 
@@ -73,6 +75,7 @@ export function StatusBar({ connectionStatus, metrics, onOpenSettings }: StatusB
         />
 
         <div className="ml-auto flex items-center gap-2.5">
+          {stravaConfigured(strava) && (
           <StatusPill
             active={Boolean(strava?.connected)}
             activeClassName="border-[color-mix(in_oklch,var(--color-primary)_40%,transparent)] bg-[color-mix(in_oklch,var(--color-primary)_18%,transparent)] text-primary"
@@ -80,6 +83,7 @@ export function StatusBar({ connectionStatus, metrics, onOpenSettings }: StatusB
             icon={strava?.connected ? <UploadCloud className="h-3.5 w-3.5" /> : <Upload className="h-3.5 w-3.5" />}
             label={strava?.connected ? "Strava ready" : "No Strava"}
           />
+          )}
           <button
             onClick={onOpenSettings}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/80 bg-card/70 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"

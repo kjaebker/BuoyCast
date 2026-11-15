@@ -7,6 +7,14 @@ can include breaking changes; they're called out below.
 
 ## Unreleased
 
+### Changed
+- Strava and HTTP export controls only appear when they're set up. The
+  completion screen shows the export's delivery status when an export URL
+  is configured, offers the Strava upload only when an account is
+  connected, and otherwise just has a **Done** button. The top bar's Strava
+  badge and the Strava and export sections in Settings are hidden until
+  configured, with a pointer to the setup guide.
+
 ## 0.3.0 — 2026-11-14
 
 First public release.

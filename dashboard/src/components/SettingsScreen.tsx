@@ -7,6 +7,7 @@ import { useState, useEffect } from "react";
 import { ArrowLeft, Wifi, WifiOff, Heart, HeartOff, UploadCloud, Upload, RefreshCw, RotateCcw, Download, CheckCircle2, AlertCircle, Activity, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
+import { exportConfigured, stravaConfigured } from "@/lib/integrations";
 import type { SystemStatus, StravaStatus, AppSettings, UpdateInfo, ExportInfo } from "@/types";
 
 type SettingsScreenProps = {
@@ -213,6 +214,7 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
                 }
               />
 
+              {stravaConfigured(strava) && (
               <label className="flex cursor-pointer items-center gap-4 rounded-2xl border border-border/80 bg-card/75 px-4 py-4 shadow-[0_12px_32px_-20px_rgba(0,0,0,0.8)] backdrop-blur-sm hover:bg-card/90 transition-colors">
                 <div className="flex-1">
                   <div className="font-semibold text-foreground">Include HR in Strava</div>
@@ -227,6 +229,7 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
                   className="h-6 w-6 rounded-md border-border accent-primary"
                 />
               </label>
+              )}
             </div>
           </section>
 
@@ -271,7 +274,8 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
             </div>
           </section>
 
-          {/* Workout export (HTTP) */}
+          {/* Workout export (HTTP), only when [export] url is set */}
+          {exportConfigured(exportInfo) && exportInfo && (
           <section>
             <h2 className="mb-3 text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               Workout Export
@@ -279,30 +283,28 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
             <SettingCard
               icon={<Send className="h-5 w-5" />}
               iconTone={
-                !exportInfo?.configured
-                  ? "muted"
-                  : (exportInfo.counts.FAILED ?? 0) + (exportInfo.counts.REJECTED ?? 0) > 0
-                    ? "rose"
-                    : "teal"
+                (exportInfo.counts.FAILED ?? 0) + (exportInfo.counts.REJECTED ?? 0) > 0
+                  ? "rose"
+                  : "teal"
               }
-              title={exportInfo?.configured ? exportInfo.target_host : "Not Configured"}
+              title={exportInfo.target_host}
               subtitle={
-                !exportInfo?.configured
-                  ? "Set [export] url in config.toml"
-                  : [
-                      `${exportInfo.counts.SENT ?? 0} sent`,
-                      (exportInfo.counts.PENDING ?? 0) > 0 && `${exportInfo.counts.PENDING} queued`,
-                      (exportInfo.counts.FAILED ?? 0) > 0 && `${exportInfo.counts.FAILED} retrying`,
-                      (exportInfo.counts.REJECTED ?? 0) > 0 && `${exportInfo.counts.REJECTED} rejected`,
-                      !exportInfo.auto_send && "auto-send off",
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")
+                [
+                  `${exportInfo.counts.SENT ?? 0} sent`,
+                  (exportInfo.counts.PENDING ?? 0) > 0 && `${exportInfo.counts.PENDING} queued`,
+                  (exportInfo.counts.FAILED ?? 0) > 0 && `${exportInfo.counts.FAILED} retrying`,
+                  (exportInfo.counts.REJECTED ?? 0) > 0 && `${exportInfo.counts.REJECTED} rejected`,
+                  !exportInfo.auto_send && "auto-send off",
+                ]
+                  .filter(Boolean)
+                  .join(" · ")
               }
             />
           </section>
+          )}
 
-          {/* Strava */}
+          {/* Strava, only when client_id/secret are in config.toml */}
+          {stravaConfigured(strava) && (
           <section>
             <h2 className="mb-3 text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               Strava Integration
@@ -351,6 +353,28 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
               )}
             </div>
           </section>
+          )}
+
+          {(!stravaConfigured(strava) || !exportConfigured(exportInfo)) && strava && exportInfo && (
+            <p className="px-1 text-sm text-muted-foreground">
+              {!stravaConfigured(strava) && !exportConfigured(exportInfo)
+                ? "Strava upload and workout export are"
+                : !stravaConfigured(strava)
+                  ? "Strava upload is"
+                  : "Workout export is"}{" "}
+              off. Turn {!stravaConfigured(strava) && !exportConfigured(exportInfo) ? "them" : "it"} on in{" "}
+              <code className="text-foreground/80">config.toml</code>. See the{" "}
+              <a
+                className="text-primary underline underline-offset-2"
+                href="https://github.com/kjaebker/BuoyCast/blob/main/docs/setup.md#optional-extras"
+                target="_blank"
+                rel="noreferrer"
+              >
+                setup guide
+              </a>
+              .
+            </p>
+          )}
 
           {/* System */}
           <section>
