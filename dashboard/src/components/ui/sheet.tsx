@@ -77,7 +77,7 @@ function Sheet({ children, open: controlledOpen, onOpenChange }: SheetProps) {
   );
 }
 
-interface SheetTriggerProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {}
+type SheetTriggerProps = React.ButtonHTMLAttributes<HTMLButtonElement>;
 
 const SheetTrigger = React.forwardRef<HTMLButtonElement, SheetTriggerProps>(
   ({ onClick, ...props }, ref) => {
@@ -224,7 +224,7 @@ const SheetDescription = React.forwardRef<
 ));
 SheetDescription.displayName = "SheetDescription";
 
-interface SheetCloseProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {}
+type SheetCloseProps = React.ButtonHTMLAttributes<HTMLButtonElement>;
 
 const SheetClose = React.forwardRef<HTMLButtonElement, SheetCloseProps>(
   ({ onClick, ...props }, ref) => {

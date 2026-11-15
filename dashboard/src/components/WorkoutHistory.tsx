@@ -103,6 +103,7 @@ export function WorkoutHistory({ visible }: WorkoutHistoryProps) {
       const data = await api.listWorkouts(PAGE_SIZE, off);
       if (off === 0) {
         setWorkouts(data);
+        setOffset(0); // a reload starts paging over
       } else {
         setWorkouts((prev) => [...prev, ...data]);
       }
@@ -112,9 +113,24 @@ export function WorkoutHistory({ visible }: WorkoutHistoryProps) {
     }
   }, []);
 
+  // Load the first page whenever the panel opens; ignore a response that
+  // arrives after it has closed again.
   useEffect(() => {
-    if (visible) load(0);
-  }, [visible, load]);
+    if (!visible) return;
+    let cancelled = false;
+    api
+      .listWorkouts(PAGE_SIZE, 0)
+      .then((data) => {
+        if (cancelled) return;
+        setWorkouts(data);
+        setOffset(0);
+        setHasMore(data.length === PAGE_SIZE);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [visible]);
 
   const handleUpload = async (id: string) => {
     await api.uploadWorkout(id).catch(() => {});

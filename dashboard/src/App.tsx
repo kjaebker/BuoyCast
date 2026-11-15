@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+import { useState } from "react";
 import * as api from "@/lib/api";
 import { History, Waves } from "lucide-react";
 import { useWorkoutSocket } from "@/hooks/useWorkoutSocket";
@@ -14,18 +14,20 @@ import { SettingsScreen } from "@/components/SettingsScreen";
 import { Button } from "@/components/ui/button";
 
 function App() {
-  const { metrics, workoutState, connectionStatus, dismissSummary } = useWorkoutSocket();
+  const { metrics, history, workoutState, connectionStatus, dismissSummary } = useWorkoutSocket();
   const [showHistory, setShowHistory] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [historyKey, setHistoryKey] = useState(0);
   const [rowingPromptDismissed, setRowingPromptDismissed] = useState(false);
 
-  // Reset dismissal once the user stops rowing so the prompt can reappear
-  useEffect(() => {
-    if (!metrics?.stroke_rate) {
-      setRowingPromptDismissed(false);
-    }
-  }, [metrics?.stroke_rate]);
+  // Reset the dismissal once the user stops rowing so the prompt can reappear.
+  // (Adjusting state while rendering, per React's "derived state" guidance.)
+  const isStroking = (metrics?.stroke_rate ?? 0) > 0;
+  const [wasStroking, setWasStroking] = useState(isStroking);
+  if (isStroking !== wasStroking) {
+    setWasStroking(isStroking);
+    if (!isStroking) setRowingPromptDismissed(false);
+  }
 
   const showRowingPrompt =
     workoutState === "IDLE" &&
@@ -98,7 +100,7 @@ function App() {
             <RecoveryBanner onDiscard={() => setHistoryKey((k) => k + 1)} />
           )}
 
-          <LiveMetrics metrics={metrics} workoutState={workoutState} />
+          <LiveMetrics metrics={metrics} history={history} workoutState={workoutState} />
 
           {workoutState === "IDLE" && (
             <div className="px-4 pb-2">

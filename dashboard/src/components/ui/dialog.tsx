@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 interface DialogContextValue {
   open: boolean;
   setOpen: (open: boolean) => void;
-  dialogRef: React.RefObject<HTMLDialogElement | null>;
+  setDialogNode: (node: HTMLDialogElement | null) => void;
 }
 
 const DialogContext = React.createContext<DialogContextValue | null>(null);
@@ -26,7 +26,8 @@ interface DialogProps {
 
 function Dialog({ children, open: controlledOpen, onOpenChange }: DialogProps) {
   const [internalOpen, setInternalOpen] = React.useState(false);
-  const dialogRef = React.useRef<HTMLDialogElement>(null);
+  // State (not a ref) so the effects below re-run once the <dialog> mounts.
+  const [dialog, setDialogNode] = React.useState<HTMLDialogElement | null>(null);
 
   const isControlled = controlledOpen !== undefined;
   const open = isControlled ? controlledOpen : internalOpen;
@@ -40,7 +41,6 @@ function Dialog({ children, open: controlledOpen, onOpenChange }: DialogProps) {
   );
 
   React.useEffect(() => {
-    const dialog = dialogRef.current;
     if (!dialog) return;
 
     if (open && !dialog.open) {
@@ -48,19 +48,18 @@ function Dialog({ children, open: controlledOpen, onOpenChange }: DialogProps) {
     } else if (!open && dialog.open) {
       dialog.close();
     }
-  }, [open]);
+  }, [open, dialog]);
 
   React.useEffect(() => {
-    const dialog = dialogRef.current;
     if (!dialog) return;
 
     const handleClose = () => setOpen(false);
     dialog.addEventListener("close", handleClose);
     return () => dialog.removeEventListener("close", handleClose);
-  }, [setOpen]);
+  }, [setOpen, dialog]);
 
   return (
-    <DialogContext.Provider value={{ open, setOpen, dialogRef }}>
+    <DialogContext.Provider value={{ open, setOpen, setDialogNode }}>
       {children}
     </DialogContext.Provider>
   );
@@ -87,19 +86,19 @@ const DialogTrigger = React.forwardRef<HTMLButtonElement, DialogTriggerProps>(
 );
 DialogTrigger.displayName = "DialogTrigger";
 
-interface DialogContentProps extends React.HTMLAttributes<HTMLDialogElement> {}
+type DialogContentProps = React.HTMLAttributes<HTMLDialogElement>;
 
 const DialogContent = React.forwardRef<HTMLDialogElement, DialogContentProps>(
   ({ className, children, ...props }, ref) => {
-    const { setOpen, dialogRef } = useDialogContext();
+    const { setOpen, setDialogNode } = useDialogContext();
 
     const combinedRef = React.useCallback(
       (node: HTMLDialogElement | null) => {
-        (dialogRef as React.MutableRefObject<HTMLDialogElement | null>).current = node;
+        setDialogNode(node);
         if (typeof ref === "function") ref(node);
         else if (ref) (ref as React.MutableRefObject<HTMLDialogElement | null>).current = node;
       },
-      [dialogRef, ref]
+      [setDialogNode, ref]
     );
 
     const handleBackdropClick = (e: React.MouseEvent<HTMLDialogElement>) => {
@@ -189,7 +188,7 @@ const DialogDescription = React.forwardRef<
 ));
 DialogDescription.displayName = "DialogDescription";
 
-interface DialogCloseProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {}
+type DialogCloseProps = React.ButtonHTMLAttributes<HTMLButtonElement>;
 
 const DialogClose = React.forwardRef<HTMLButtonElement, DialogCloseProps>(
   ({ onClick, ...props }, ref) => {

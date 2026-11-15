@@ -5,16 +5,19 @@
  * iPad: two columns - metrics left, sparkline right
  */
 
-import { useRef, useState, useEffect } from "react";
+import { useState } from "react";
+import { useNow } from "@/hooks/useNow";
 import { Activity, Timer, Ruler, Gauge, Zap, Flame } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatTime, formatPace, formatDistance, formatNum } from "@/lib/format";
 import { MetricSparkline } from "./MetricSparkline";
 import { RowingScene } from "./RowingScene";
 import type { RowingMetrics, WorkoutState } from "@/types";
+import type { MetricsHistory } from "@/hooks/useWorkoutSocket";
 
 type LiveMetricsProps = {
   metrics: RowingMetrics | null;
+  history: MetricsHistory;
   workoutState: WorkoutState;
 };
 
@@ -99,79 +102,33 @@ const ACTIVE_MESSAGES = [
   "Keep the rate",
 ] as const;
 
-export function LiveMetrics({ metrics, workoutState }: LiveMetricsProps) {
-  const strokeRateHistoryRef = useRef<number[]>([]);
-  const heartRateHistoryRef = useRef<number[]>([]);
-  const lastActiveStrokeMs = useRef<number>(0);
-  const lastHrTimestamp = useRef<number>(0);
-  const [effectiveStrokeRate, setEffectiveStrokeRate] = useState<number | null>(null);
-  const [hrConnected, setHrConnected] = useState(false);
-  const [msgIdx, setMsgIdx] = useState(0);
+export function LiveMetrics({ metrics, history, workoutState }: LiveMetricsProps) {
+  const now = useNow(500);
 
-  useEffect(() => {
-    if (workoutState !== "ACTIVE") {
-      setMsgIdx(0);
-      return;
-    }
-    const id = setInterval(() => {
-      setMsgIdx((i) => (i + 1) % ACTIVE_MESSAGES.length);
-    }, 30_000);
-    return () => clearInterval(id);
-  }, [workoutState]);
+  // Stroke rate holds its last value briefly, then decays to 0 after 3 s
+  // without an active stroke; null until the first stroke is seen.
+  const { lastStroke, lastHrAt } = history;
+  const effectiveStrokeRate =
+    lastStroke == null ? null : now - lastStroke.at <= 3000 ? lastStroke.rate : 0;
 
-  // Track last time we saw an active stroke rate
-  useEffect(() => {
-    if (metrics?.stroke_rate != null && metrics.stroke_rate > 0) {
-      lastActiveStrokeMs.current = Date.now();
-      setEffectiveStrokeRate(metrics.stroke_rate);
-    }
-  }, [metrics?.stroke_rate, metrics?.timestamp]);
+  // Hide HR from the chart after 15 s without data — generous enough to ride
+  // out BLE jitter and brief merge gaps without the chart flickering.
+  const hrConnected = lastHrAt != null && now - lastHrAt <= 15_000;
 
-  // Decay stroke rate to 0 after 3s without active rowing
-  useEffect(() => {
-    const id = setInterval(() => {
-      if (lastActiveStrokeMs.current > 0 && Date.now() - lastActiveStrokeMs.current > 3000) {
-        setEffectiveStrokeRate(0);
-      }
-    }, 500);
-    return () => clearInterval(id);
-  }, []);
-
-  // Track last time we received HR data
-  useEffect(() => {
-    if (metrics?.heart_rate_bpm != null) {
-      lastHrTimestamp.current = Date.now();
-      setHrConnected(true);
-    }
-  }, [metrics?.heart_rate_bpm]);
-
-  // Hide HR from the chart after 15s without data — generous to allow for
-  // BLE jitter and brief merge gaps without the chart flickering mid-workout.
-  useEffect(() => {
-    const id = setInterval(() => {
-      if (Date.now() - lastHrTimestamp.current > 15_000) {
-        setHrConnected(false);
-      }
-    }, 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  const strokeRateForDisplay = effectiveStrokeRate;
-
-  // Only record active stroke rates — zeros from the decay interval would
-  // scale the Y-axis down to 0 and make the sparkline appear to bottom out.
-  if (strokeRateForDisplay != null && strokeRateForDisplay > 0) {
-    const history = strokeRateHistoryRef.current;
-    history.push(strokeRateForDisplay);
-    if (history.length > 60) history.shift();
+  // Rotate the encouragement every 30 s while rowing; restart at the first
+  // message each time a workout becomes active.
+  const [activeSince, setActiveSince] = useState<number | null>(() =>
+    workoutState === "ACTIVE" ? Date.now() : null,
+  );
+  const [prevWorkoutState, setPrevWorkoutState] = useState(workoutState);
+  if (workoutState !== prevWorkoutState) {
+    setPrevWorkoutState(workoutState);
+    setActiveSince(workoutState === "ACTIVE" ? now : null);
   }
-
-  // Record HR values for the sparkline (last 60 readings, ~1Hz).
-  if (metrics?.heart_rate_bpm != null) {
-    const hrHistory = heartRateHistoryRef.current;
-    hrHistory.push(metrics.heart_rate_bpm);
-    if (hrHistory.length > 60) hrHistory.shift();
-  }
+  const msgIdx =
+    activeSince == null
+      ? 0
+      : Math.floor(Math.max(0, now - activeSince) / 30_000) % ACTIVE_MESSAGES.length;
 
   const isPaused = workoutState === "PAUSED";
   const stateLabel =
@@ -226,7 +183,7 @@ export function LiveMetrics({ metrics, workoutState }: LiveMetricsProps) {
         <MetricTile
           icon={<Activity className="h-3.5 w-3.5" />}
           label="Stroke Rate"
-          value={formatNum(strokeRateForDisplay, 1)}
+          value={formatNum(effectiveStrokeRate, 1)}
           unit="spm"
         />
         <MetricTile
@@ -256,8 +213,8 @@ export function LiveMetrics({ metrics, workoutState }: LiveMetricsProps) {
 
       <div className="mt-4">
         <MetricSparkline
-          strokeRateData={strokeRateHistoryRef.current}
-          heartRateData={heartRateHistoryRef.current}
+          strokeRateData={history.strokeRate}
+          heartRateData={history.heartRate}
           currentHr={metrics?.heart_rate_bpm ?? null}
           hrConnected={hrConnected}
           label="Stroke rate, last 60 seconds"
