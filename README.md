@@ -33,7 +33,7 @@ server when you finish.
   as JSON or a FIT file ([docs/export.md](docs/export.md)), and/or upload to
   Strava.
 - **Bluetooth FTMS broadcast** of your rowing data, for apps that accept
-  third-party rowers. Peloton pairing is still experimental (see below).
+  third-party rowers, including the Peloton app.
 - **One-line install and in-app updates** from GitHub Releases, with
   automatic rollback if an update fails.
 
@@ -80,7 +80,7 @@ are under **Settings** (the gear icon).
 | **Your own server** | ✅ | `[export]` in the config. See [docs/export.md](docs/export.md) for setup and the request format. |
 | **Strava** | ✅ | Needs your own Strava API application. See the [setup guide](docs/setup.md#strava). |
 | **Heart-rate straps** | ✅ | Standard Bluetooth heart-rate profile. Tested with the Wahoo TICKR. |
-| **Peloton app** | 🧪 Experimental | BuoyCast broadcasts as an FTMS rower, but doesn't show up in the Peloton app yet. Help debugging is welcome: [hardware checklist §3](docs/hardware-checklist.md#3--ftms-ble-broadcast-to-peloton). |
+| **Peloton app** | ✅ | Pair from inside a Rowing class in the Peloton app (App+ or All-Access): **Connect a Bluetooth Device** → **BuoyCast**. See [hardware checklist §3](docs/hardware-checklist.md#3--ftms-ble-broadcast-to-peloton) if it doesn't show up. |
 
 ## Security
 

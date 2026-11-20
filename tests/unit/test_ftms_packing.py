@@ -435,3 +435,10 @@ class TestFullPacking:
             )
         )
         assert len(base) < len(with_dist) < len(with_all)
+
+
+def test_advert_service_data_marks_available_rower() -> None:
+    from src.ble.ftms import FTMS_ADVERT_SERVICE_DATA
+
+    # Flags 0x01 (available), Fitness Machine Type 0x0010 LE (rower bit 4).
+    assert FTMS_ADVERT_SERVICE_DATA == bytes([0x01, 0x10, 0x00])

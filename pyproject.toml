@@ -49,6 +49,9 @@ filterwarnings = [
     "error",
     # Starlette now prefers httpx2 for TestClient; httpx still works fine.
     "ignore:Using `httpx` with `starlette.testclient` is deprecated:starlette.exceptions.StarletteDeprecationWarning",
+    # dbus-next 0.2.3 (bless's D-Bus library, unmaintained) uses a typing helper
+    # deprecated in Python 3.13. It still works; it's removed in 3.15.
+    "ignore:'typing.no_type_check_decorator' is deprecated:DeprecationWarning",
 ]
 
 [tool.ruff]

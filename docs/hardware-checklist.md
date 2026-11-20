@@ -147,10 +147,11 @@ with third-party FTMS rowers from inside a rowing class. This needs an App+ or
 All-Access membership. Pairing is done in the app, not in the Bike or Tread
 touchscreen's Bluetooth settings.
 
-> **Status:** Peloton pairing has not been confirmed to work yet. With v0.3.0,
-> BuoyCast did not appear in the Peloton iPad app's device list. Work through
-> 3.2 → 3.4 in order and note where it stops working: that tells us whether the
-> problem is the advertisement, the data, or Peloton's device filter.
+> **Status:** Peloton pairing works. Before this release BuoyCast didn't
+> appear in the Peloton app's device list, because the advertisement had no
+> FTMS Service Data. If it stops working for you, go through 3.2 → 3.4 in
+> order and note where it fails: that tells you whether the problem is the
+> advertisement, the data, or Peloton's device filter.
 
 ### 3.1 FTMS data packing — unit test verification
 
@@ -170,7 +171,17 @@ First check that advertising started on the Pi:
 journalctl -u buoycast | grep -i ftms
 ```
 
-**Expected:** `FTMS advertising as 'BuoyCast' — service UUID 00001826-…`. A
+**Expected:**
+
+```
+FTMS: advertising Service Data 01 10 00 (available, rower)
+FTMS advertising as 'BuoyCast' — service UUID 00001826-…
+FTMS: BlueZ pairing agent registered at /com/buoycast/pairingagent (auto-accept)
+```
+
+`can't add advertising Service Data` means the installed `bless` version has
+changed how it builds advertisements; BuoyCast still advertises, but Peloton
+probably won't list it. A
 `FTMS BLE setup failed after 4 attempts` line means the adapter refused the
 registration. Run `bluetoothctl show` and check `Powered: yes`.
 
@@ -182,10 +193,9 @@ so both apps see the same radio.
 - [ ] Tap the row (not **Connect**) to expand the advertisement details:
   - [ ] **Complete Local Name:** `BuoyCast`
   - [ ] **Service UUIDs** include **Fitness Machine** (`0x1826`)
-  - [ ] **Service Data:** write down whether there is an entry for `0x1826`
-    and its bytes. The FTMS spec has a rower advertise `01 10 00` there
-    ("available", machine type = rower). BuoyCast doesn't send this yet,
-    and its absence is the main suspect for Peloton not listing BuoyCast.
+  - [ ] **Service Data** for `0x1826` is `0x011000` (`01 10 00`: machine
+    available, machine type = rower). Peloton filters on this; without it,
+    BuoyCast doesn't appear in Peloton's list.
 
 > If BuoyCast doesn't appear at all, restart the service
 > (`sudo systemctl restart buoycast`), wait ~10 s, and scan again.
@@ -221,9 +231,9 @@ Bluetooth is on, and the iPad is within a few metres of the Pi.
 **If BuoyCast doesn't appear in Peloton's list:**
 
 - [ ] Confirm it still shows in nRF Connect's scanner on the same iPad
-  (3.2). If nRF Connect sees it but Peloton doesn't, Peloton is filtering it
-  out. Note the **Service Data** result from 3.2, since that's the likely
-  reason.
+  (3.2), with the Service Data. If nRF Connect sees it but Peloton doesn't,
+  Peloton is filtering it out, and missing or wrong Service Data is the
+  likely reason.
 - [ ] Turn the iPad's Bluetooth off and on, and force-quit the Peloton app
   (iOS caches Bluetooth scan results).
 - [ ] Make sure nothing else is connected to BuoyCast (nRF Connect, the
@@ -338,7 +348,7 @@ If resource usage is too high, see task 11.2 (performance profiling).
 | TICKR staleness | HR → `–` within 3 s of signal loss |
 | TICKR reconnect | Auto-reconnects without service crash |
 | FTMS packing | Unit tests pass |
-| FTMS advertising | BuoyCast visible in nRF Connect with service `0x1826`; Service Data result noted |
+| FTMS advertising | BuoyCast visible in nRF Connect with service `0x1826` and Service Data `01 10 00` |
 | Peloton pairing | BuoyCast listed in a Peloton app rowing class; stroke rate + pace shown |
 | Full workout | Start → row → pause → resume → end → summary |
 | Data persistence | Workout in `/api/workouts` with correct stats |

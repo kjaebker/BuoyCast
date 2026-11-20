@@ -144,8 +144,15 @@ paid subscription for API access.
 ### Peloton
 
 BuoyCast broadcasts your rowing data over Bluetooth as a standard FTMS
-rower. Pairing with the Peloton app hasn't been confirmed to work yet. To
-try it, and to help debug it, follow section 3 of the
+rower. To use it with Peloton (App+ or All-Access membership):
+
+1. In the Peloton app, open **Rowing** and pick a class.
+2. On the class screen, choose **Connect a Bluetooth Device**, then
+   **BuoyCast**.
+3. Start the class and row. Stroke rate and pace come from the S4.
+
+Pair in the app, not in the Bike or Tread touchscreen's Bluetooth settings.
+If BuoyCast doesn't appear, see section 3 of the
 [hardware checklist](hardware-checklist.md#3--ftms-ble-broadcast-to-peloton).
 
 ## Updating
