@@ -7,6 +7,8 @@ can include breaking changes; they're called out below.
 
 ## Unreleased
 
+## 0.3.2 — 2026-11-20
+
 ### Fixed
 - The Bluetooth pairing agent now registers. It always failed at startup
   with "pairing agent registration failed", so a device that tried to bond

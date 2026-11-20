@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "buoycast"
-version = "0.3.1"
+version = "0.3.2"
 description = "Raspberry Pi bridge for WaterRower S4 — BLE FTMS, live dashboard, Strava upload"
 readme = "README.md"
 license = "MIT"
