@@ -7,6 +7,14 @@ can include breaking changes; they're called out below.
 
 ## Unreleased
 
+### Fixed
+- The Bluetooth pairing agent now registers. It always failed at startup
+  with "pairing agent registration failed", so a device that tried to bond
+  with BuoyCast (as Peloton may) was rejected.
+- The Bluetooth advertisement now includes FTMS Service Data saying
+  BuoyCast is an available rower. Apps that filter on the machine type,
+  Peloton among them, skipped it without this.
+
 ## 0.3.1 — 2026-11-14
 
 ### Changed

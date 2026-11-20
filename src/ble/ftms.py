@@ -13,6 +13,7 @@ import asyncio
 import logging
 import struct
 
+from src.ble.pairing import pairing_agent_class
 from src.events import EventBus, EventType
 from src.models import RowingMetrics
 
@@ -25,6 +26,15 @@ FITNESS_MACHINE_FEATURE_UUID = "00002acc-0000-1000-8000-00805f9b34fb"
 TRAINING_STATUS_CHAR_UUID = "00002ad6-0000-1000-8000-00805f9b34fb"
 CONTROL_POINT_CHAR_UUID = "00002ad9-0000-1000-8000-00805f9b34fb"
 MACHINE_STATUS_CHAR_UUID = "00002ada-0000-1000-8000-00805f9b34fb"
+
+# --- FTMS advertising Service Data (FTMS spec §3.1.1) ---
+# Flags (uint8): bit 0 = Fitness Machine Available.
+# Fitness Machine Type (uint16 LE): bit 4 = Rower Supported.
+# Apps that look for rowers (Peloton among them) filter on this, so a device
+# that only lists the 0x1826 UUID never shows up in their device list.
+_FTMS_AD_FLAG_AVAILABLE = 0x01
+_FTMS_AD_TYPE_ROWER = 1 << 4
+FTMS_ADVERT_SERVICE_DATA = struct.pack("<BH", _FTMS_AD_FLAG_AVAILABLE, _FTMS_AD_TYPE_ROWER)
 
 # BlueZ pairing agent D-Bus path
 _AGENT_PATH = "/com/buoycast/pairingagent"
@@ -156,6 +166,48 @@ def pack_rower_data(metrics: RowingMetrics) -> bytes:
     # Prepend flags
     result = struct.pack("<H", flags) + bytes(data)
     return result
+
+
+async def _add_ftms_service_data(server: object) -> None:
+    """Make bless include FTMS Service Data in its advertisement.
+
+    bless builds the advertisement inside ``start_advertising`` and has no
+    option for Service Data, so this replaces that method on this server's
+    application with one that does the same steps plus the Service Data.
+    It relies on bless internals (checked against 0.3.0). If they have changed,
+    it logs a warning and leaves bless's stock advertisement alone.
+    """
+    try:
+        from bless.backends.bluezdbus.dbus.advertisement import (  # type: ignore[import]
+            BlueZLEAdvertisement,
+            Type,
+        )
+        from dbus_next import Variant  # type: ignore[import]
+
+        await server.setup_task  # type: ignore[attr-defined]
+        app = server.app  # type: ignore[attr-defined]
+        for name in ("set_name", "advertisements", "services", "bus", "app_name"):
+            if not hasattr(app, name):
+                raise AttributeError(f"bless application has no {name!r}")
+    except Exception as exc:  # any mismatch means "use the stock advert"
+        logger.warning("FTMS: can't add advertising Service Data (%s); using bless default", exc)
+        return
+
+    async def start_advertising(adapter: object) -> None:
+        await app.set_name(adapter, app.app_name)
+        advertisement = BlueZLEAdvertisement(Type.PERIPHERAL, len(app.advertisements) + 1, app)
+        app.advertisements.append(advertisement)
+        advertisement._service_uuids.append(app.services[0].UUID)
+        advertisement._service_data = {FTMS_SERVICE_UUID: Variant("ay", FTMS_ADVERT_SERVICE_DATA)}
+        app.bus.export(advertisement.path, advertisement)
+        iface = adapter.get_interface("org.bluez.LEAdvertisingManager1")  # type: ignore[attr-defined]
+        await iface.call_register_advertisement(advertisement.path, {})
+        logger.info(
+            "FTMS: advertising Service Data %s (available, rower)",
+            FTMS_ADVERT_SERVICE_DATA.hex(" "),
+        )
+
+    app.start_advertising = start_advertising
 
 
 class FTMSBroadcaster:
@@ -389,6 +441,7 @@ class FTMSBroadcaster:
 
                 server.write_request_func = _cp_write
 
+                await _add_ftms_service_data(server)
                 await server.start()
                 self._server = server
                 logger.info(
@@ -447,51 +500,8 @@ class FTMSBroadcaster:
             return
 
         try:
-
-            class _PairingAgent(ServiceInterface):
-                """BlueZ Agent1 implementation — auto-accepts everything."""
-
-                def __init__(self) -> None:
-                    super().__init__("org.bluez.Agent1")
-
-                @method()  # type: ignore[misc]
-                def Release(self) -> None:  # noqa: N802
-                    pass
-
-                @method()  # type: ignore[misc]
-                def RequestPinCode(self, device: o) -> s:  # type: ignore[name-defined]  # noqa: N802, F821
-                    return "0000"
-
-                @method()  # type: ignore[misc]
-                def DisplayPinCode(self, device: o, pincode: s) -> None:  # type: ignore[name-defined]  # noqa: N802, F821
-                    pass
-
-                @method()  # type: ignore[misc]
-                def RequestPasskey(self, device: o) -> u:  # type: ignore[name-defined]  # noqa: N802, F821
-                    return 0
-
-                @method()  # type: ignore[misc]
-                def DisplayPasskey(self, device: o, passkey: u, entered: q) -> None:  # type: ignore[name-defined]  # noqa: N802, F821
-                    pass
-
-                @method()  # type: ignore[misc]
-                def RequestConfirmation(self, device: o, passkey: u) -> None:  # type: ignore[name-defined]  # noqa: N802, F821
-                    pass  # auto-accept
-
-                @method()  # type: ignore[misc]
-                def RequestAuthorization(self, device: o) -> None:  # type: ignore[name-defined]  # noqa: N802, F821
-                    pass  # auto-accept
-
-                @method()  # type: ignore[misc]
-                def AuthorizeService(self, device: o, uuid: s) -> None:  # type: ignore[name-defined]  # noqa: N802, F821
-                    pass  # auto-accept
-
-                @method()  # type: ignore[misc]
-                def Cancel(self) -> None:  # noqa: N802
-                    pass
-
             bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
-            agent = _PairingAgent()
+            agent = pairing_agent_class(ServiceInterface, method)()
             bus.export(_AGENT_PATH, agent)
 
             introspection = await bus.introspect("org.bluez", "/org/bluez")
