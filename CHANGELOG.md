@@ -7,6 +7,18 @@ can include breaking changes; they're called out below.
 
 ## Unreleased
 
+### Added
+- A live graph can replace the rowing scene. Pick Pace, Watts, SPM or HR
+  above the scene to see the last 5 minutes of that metric with its average;
+  Scene switches back. The choice is remembered on each device.
+
+### Fixed
+- The phone or tablet screen no longer goes to sleep during a workout. The
+  browser's wake lock only works over HTTPS, and BuoyCast is served over
+  plain HTTP, so it never took effect. A silent looping video now keeps the
+  screen on instead. On iPhone it starts after your first tap on the page.
+- The screen also stays on while a workout is paused, not only while rowing.
+
 ## 0.3.2 — 2026-11-20
 
 ### Fixed

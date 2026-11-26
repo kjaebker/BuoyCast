@@ -13,13 +13,27 @@ const MAX_BACKOFF_MS = 30_000;
 const INITIAL_BACKOFF_MS = 1_000;
 /** Sparkline window: one point per metrics message (~1 Hz), so ~60 s. */
 const HISTORY_LENGTH = 60;
+/** Live graph window: one sample per metrics message (~1 Hz), so ~5 min. */
+const SAMPLE_LENGTH = 300;
 
 type ConnectionStatus = "connecting" | "connected" | "disconnected";
+
+/** One metrics message, for the live graph. Null where the value was absent. */
+export type MetricSample = {
+  /** ms epoch when the message arrived */
+  at: number;
+  pace: number | null;
+  power: number | null;
+  strokeRate: number | null;
+  heartRate: number | null;
+};
 
 export type MetricsHistory = {
   /** Recent non-zero stroke rates (zeros would flatten the chart's Y axis). */
   strokeRate: number[];
   heartRate: number[];
+  /** Last ~5 minutes of samples, oldest first. */
+  samples: MetricSample[];
   /** Most recent non-zero stroke rate and when it arrived (ms epoch). */
   lastStroke: { rate: number; at: number } | null;
   /** When heart rate was last present in a message (ms epoch). */
@@ -45,12 +59,13 @@ export type WorkoutSocketState = {
 const EMPTY_HISTORY: MetricsHistory = {
   strokeRate: [],
   heartRate: [],
+  samples: [],
   lastStroke: null,
   lastHrAt: null,
 };
 
-function appendCapped(values: number[], value: number): number[] {
-  const next = values.length >= HISTORY_LENGTH ? values.slice(1) : values.slice();
+function appendCapped<T>(values: T[], value: T, cap = HISTORY_LENGTH): T[] {
+  const next = values.length >= cap ? values.slice(1) : values.slice();
   next.push(value);
   return next;
 }
@@ -99,6 +114,18 @@ export function useWorkoutSocket(url?: string): WorkoutSocketState {
           setHistory((h) => ({
             strokeRate: stroking ? appendCapped(h.strokeRate, m.stroke_rate!) : h.strokeRate,
             heartRate: hasHr ? appendCapped(h.heartRate, m.heart_rate_bpm!) : h.heartRate,
+            samples: appendCapped(
+              h.samples,
+              {
+                at,
+                // Pace and power are meaningless between strokes; leave a gap.
+                pace: stroking && m.pace_s_per_500m ? m.pace_s_per_500m : null,
+                power: stroking && m.power_watts ? m.power_watts : null,
+                strokeRate: stroking ? m.stroke_rate : null,
+                heartRate: m.heart_rate_bpm,
+              },
+              SAMPLE_LENGTH,
+            ),
             lastStroke: stroking ? { rate: m.stroke_rate!, at } : h.lastStroke,
             lastHrAt: hasHr ? at : h.lastHrAt,
           }));
