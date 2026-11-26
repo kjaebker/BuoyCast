@@ -3,6 +3,9 @@
  *
  * iPhone: single column, large metrics
  * iPad: two columns - metrics left, sparkline right
+ *
+ * The top visual is either the rowing scene or a live graph of one metric,
+ * picked with LiveViewPicker.
  */
 
 import { useState } from "react";
@@ -12,6 +15,9 @@ import { cn } from "@/lib/utils";
 import { formatTime, formatPace, formatDistance, formatNum } from "@/lib/format";
 import { MetricSparkline } from "./MetricSparkline";
 import { RowingScene } from "./RowingScene";
+import { LiveGraph } from "./LiveGraph";
+import { LiveViewPicker } from "./LiveViewPicker";
+import { LiveView, useLiveView } from "@/hooks/useLiveView";
 import type { RowingMetrics, WorkoutState } from "@/types";
 import type { MetricsHistory, SubscribeStrokes } from "@/hooks/useWorkoutSocket";
 
@@ -110,6 +116,7 @@ export function LiveMetrics({
   subscribeStrokes,
 }: LiveMetricsProps) {
   const now = useNow(500);
+  const [liveView, setLiveView] = useLiveView();
 
   // Stroke rate holds its last value briefly, then decays to 0 after 3 s
   // without an active stroke; null until the first stroke is seen.
@@ -172,13 +179,33 @@ export function LiveMetrics({
         </div>
       </div>
 
-      <RowingScene
-        strokeRate={effectiveStrokeRate}
-        pace={metrics?.pace_s_per_500m ?? null}
-        isActive={workoutState === "ACTIVE"}
-        isPaused={workoutState === "PAUSED"}
-        subscribeStrokes={subscribeStrokes}
-      />
+      <LiveViewPicker value={liveView} onChange={setLiveView} />
+
+      {liveView === LiveView.SCENE ? (
+        <RowingScene
+          strokeRate={effectiveStrokeRate}
+          pace={metrics?.pace_s_per_500m ?? null}
+          isActive={workoutState === "ACTIVE"}
+          isPaused={workoutState === "PAUSED"}
+          subscribeStrokes={subscribeStrokes}
+        />
+      ) : (
+        <LiveGraph
+          metric={liveView}
+          samples={history.samples}
+          current={
+            liveView === LiveView.PACE
+              ? (metrics?.pace_s_per_500m ?? null)
+              : liveView === LiveView.POWER
+                ? (metrics?.power_watts ?? null)
+                : liveView === LiveView.STROKE_RATE
+                  ? effectiveStrokeRate
+                  : hrConnected
+                    ? (metrics?.heart_rate_bpm ?? null)
+                    : null
+          }
+        />
+      )}
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
         <MetricTile
